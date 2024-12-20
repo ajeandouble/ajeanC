@@ -1,27 +1,35 @@
-program : 			FUNCTION ID LPAREN args RPAREN function | FUNCTION ID LPAREN args RPAREN function program
-decl_args : 		ID | ID COMMA decl_args
-function :			FUNCTION LBRACK statement_list RBRACK | LBRACK statement_list RBRACK function
-call_args:			expr | expr COMMA call_args
-function_call : 	ID LPAREN call_args RPAREN
-statement_list : 	statement
-               		| statement SEMI statement_list
-statement : 		compound_statement
-          			| assignment_statement
-          			| if_block
-          			| empty
-if_block: IF LPAREN expr RPAREN LBRACK statement_list RBRACK | IF LPAREN expr RPAREN LBRACK statement_list RBRACK else_block
-else_block: ELSE LBRACK statement_list RBRACK | ELSE if_block
-assignment_statement : ID ASSIGN expr | ID LBRACK INTEGER RBRACK ASSIGN expr
-empty :
-expr: term ((PLUS | MINUS) term)*
-term: factor ((MUL | DIV) factor)*
-factor : PLUS factor
-       | MINUS factor
-       | INTEGER
-       | LPAREN expr RPAREN
-       | variable
-	   | function
-	   | STRING
-comparaison: expr (LT | LE | GT | GE | EQ) expr
-variable: ID
+program :               function_decl | function_decl program
 
+empty:
+
+function_decl:          "function" ID LPAREN function_args RPAREN compound_statement
+function_args:          empty | function_args_list
+function_args_list:     ID | ID COMMA function_args_list
+
+compound_statement:     LBRACE empty RBRACE | LBRACE statement_list RBRACE
+statement_list:         statement | statement SEMI statement_list
+statement:              expr | assignment | if_block | return_statement
+
+expr:                   arithmetic ((LT | LE | EQ | GE | GT) arithmetic)*
+arithmetic:             term ((PLUS | MINUS) term)*
+term:                   factor ((MUL | DIV) factor)*
+factor:                 PLUS factor
+                        | MINUS factor
+                        | INTEGER
+                        | LPAREN expr RPAREN
+                        | variable
+                        | function_call
+                        | STRING
+
+assignment:             ID ASSIGN expr
+
+if_block:               IF LPAREN expr RPAREN compound_statement |  IF LPAREN expr RPAREN compound_statement else_block
+else_block:             ELSE compound_statement | ELSE if_block
+
+return_statement:       RETURN expr
+
+function_call:         ID LPAREN call_args RPAREN
+call_args:             empty | call_args_list
+call_args_list:        expr | expr COMMA call_args_list
+
+variable: ID
