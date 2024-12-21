@@ -1,4 +1,4 @@
-from typing import Union, Type, List, Any
+from typing import Union, Type, List, Any, Dict
 from abc import ABC, abstractmethod
 from interpreter.tokenizer import TokenTypes as TT
 from interpreter.ast import (
@@ -73,10 +73,10 @@ class ASTVisitor:
     def global_scope(self):
         return self._globals
 
-    def visit_String(self, node: Num):
+    def visit_string(self, node: Num):
         return node.token.value
 
-    def visit_BinOp(self, node: BinOp):
+    def visit_binop(self, node: BinOp):
         if node._op.type == TT.PLUS:
             return self.visit(node.left) + self.visit(node.right)
         elif node._op.type == TT.MINUS:
@@ -86,17 +86,17 @@ class ASTVisitor:
         elif node._op.type == TT.DIV:
             return self.visit(node.left) / self.visit(node.right)
 
-    def visit_UnaryOp(self, node: UnaryOp):
+    def visit_unaryop(self, node: UnaryOp):
         op = node.token.type
         if op == TT.PLUS:
             return +self.visit(node.expr)
         elif op == TT.MINUS:
             return -self.visit(node.expr)
 
-    def visit_Var(self, node: Var):
+    def visit_var(self, node: Var):
         return self._resolve_var(node.value)
 
-    def visit_Assign(self, node: Assign):
+    def visit_assign(self, node: Assign):
         var_name = node.left.value
         if var_name in self._globals:
             scope = self._globals
@@ -104,40 +104,57 @@ class ASTVisitor:
             scope = self.scope
         scope[var_name] = self.visit(node.right)
 
-    def visit_Statements(self, statements: List[AST]):
-        for stmt in statements:
-            visited_node = self.visit(stmt)
-            if type(visited_node) == ReturnVal:
-                break
-        print("wtffff", self._ret)
-        _ = self._call_stack.pop()
+    # def visit_statements(self, statements: List[AST]):
+    #     for stmt in statements:
+    #         visited_node = self.visit(stmt)
+    #         if type(visited_node) == ReturnVal:
+    #             _ = self._call_stack.pop()
+    #             return_
+    #             break
 
+    #     _ = self._call_stack.pop()
+
+    # FIXME: useless, could simply pass main node, handle os.exit() in caller func
     def visit_main(self, node: Function):
         # TODO: parse stdin args
         self._call_stack.append(FunctionFrame(node))
-        self.visit_Statements(node.statements)
+        self.visit_statements(node.statements)
         pass
 
-    def visit_FunctionCall(self, node: FunctionCall):
-        builtins = ["print"]
-        if node.func.value in builtins:
-            for arg in node.args:
-                if type(arg) == Num:
-                    print(arg.token.value, end=" ")
-                elif type(arg) == Var:
-                    print(self.scope[arg.token.value], end=" ")
-            return
-        locals = {}
+    def visit_stmt(self, node: AST):
+        if type(node) == BinOp:
+            return self.visit_binop(node)
+        else:
+            raise InterpreterError("fuck")
+
+    def visit_statements(self, statements: List[AST]):
+        for stmt in statements:
+            visited_node = self.visit_stmt(stmt)
+            if type(visited_node) == ReturnVal:
+                return self._ret
+
+    def visit_function_call(self, node: FunctionCall):
+        # builtins = ["print"]
+        # if node.func.value in builtins:
+        #     for arg in node.args:
+        #         if type(arg) == Num:
+        #             print(arg.token.value, end=" ")
+        #         elif type(arg) == Var:
+        #             print(self.scope[arg.token.value], end=" ")
+        #     return
+
+        locals: Dict[String, Any] = {}
         func_token = node.func
         callee_func = self._globals[func_token.value]
-        for i, callee_arg in enumerate(callee_func.args):
-            callee_arg_name = callee_arg.value
-            locals[callee_arg_name] = self.visit(node.args[i])
-            pass
+        # TODO: replace with visit expr
+        # for i, callee_arg in enumerate(callee_func.args):
+        #     callee_arg_name = callee_arg.value
+        #     locals[callee_arg_name] = self.visit(node.args[i])
+        #     pass
 
         self._call_stack.append(FunctionFrame(callee_func))
         self._call_stack[-1].locals = locals
-        self.visit_Statements(callee_func.statements)
+        self.visit_statements(callee_func.statements)
         return self._ret
 
     def visit_ReturnVal(self, node: ReturnVal):
@@ -149,9 +166,9 @@ class ASTVisitor:
         result = self.visit(node.expr)
         print(f"lll{node.expr}ll\t->\t{result}")
         if result:
-            return self.visit_Statements(node.statements)
+            return self.visit_statements(node.statements)
         else:
-            return self.visit_Statements(node.follow_else)
+            return self.visit_statements(node.follow_else)
 
     def visit(self, node: AST) -> Any:
         print(f"len={len(self._call_stack)}")
@@ -160,21 +177,21 @@ class ASTVisitor:
         if type(node) is NoOp:
             return
         elif type(node) is Function:
-            return self.visit_Statements(node.statements)
+            return self.visit_statements(node.statements)
         elif type(node) is FunctionCall:
-            return self.visit_FunctionCall(node)
+            return self.visit_function_call(node)
         elif type(node) is BinOp:
-            return self.visit_BinOp(node)
+            return self.visit_binop(node)
         elif type(node) is UnaryOp:
-            return self.visit_UnaryOp(node)
+            return self.visit_unaryop(node)
         elif type(node) is Assign:
-            return self.visit_Assign(node)
+            return self.visit_assign(node)
         elif type(node) is Var:
-            return self.visit_Var(node)
+            return self.visit_var(node)
         elif type(node) is Num:
-            return self.visit_String(node)
+            return self.visit_string(node)
         elif type(node) is String:
-            return self.visit_String(node)
+            return self.visit_string(node)
         elif type(node) is ReturnVal:
             return self.visit_ReturnVal(node)
         elif type(node) is IfCondition:
@@ -182,7 +199,7 @@ class ASTVisitor:
         # elif
         #     raise NotImplementedError("unknown token:", type(node))
 
-    def visit_Program(self):
+    def visit_program(self):
         # check if duplicate function names
         func_names = [f.id.value for f in self.program.functions]
         if len(func_names) != len(set(func_names)):
@@ -199,16 +216,16 @@ class ASTVisitor:
         for func in self.program.functions:
             if func.id.value == "main":
                 continue
-            scope = self.scope
             self._globals[func.id.value] = func
 
+        # FIXME: verify and uncomment
         # execute global code
-        for stmt in self._program.statements:
-            if type(stmt) == NoOp:
-                continue
-            if type(stmt) == FunctionCall:
-                raise InterpreterError("no function call allowed in global scope")
-            self.visit(stmt)
+        # for stmt in self._program.statements:
+        #     if type(stmt) == NoOp:
+        #         continue
+        #     if type(stmt) == FunctionCall:
+        #         raise InterpreterError("no function call allowed in global scope")
+        #     self.visit(stmt)
 
         # execute main()
         self.visit_main(self._main_function)

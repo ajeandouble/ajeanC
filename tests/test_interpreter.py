@@ -16,7 +16,7 @@ def test_visitAST():
     program_node = parser.program()
     # print(program_node)
     visitor = ASTVisitor(program_node)
-    visitor.visit_Program()
+    visitor.visit_program()
 
 
 def test_function_call():
@@ -31,7 +31,7 @@ def test_function_call():
     program_node = parser.program()
     # print(program_node)
     visitor = ASTVisitor(program_node)
-    visitor.visit_Program()
+    visitor.visit_program()
 
 
 def test_global_function_call():
@@ -46,7 +46,7 @@ def test_global_function_call():
     program_node = parser.program()
     visitor = ASTVisitor(program_node)
     with raises(InterpreterError):
-        visitor.visit_Program()
+        visitor.visit_program()
 
 
 def test_no_main_func():
@@ -59,7 +59,7 @@ def test_no_main_func():
     program_node = parser.program()
     visitor = ASTVisitor(program_node)
     with raises(InterpreterError):
-        visitor.visit_Program()
+        visitor.visit_program()
 
     input = """
         function main(a,b,c) { a = 2; }
@@ -70,7 +70,7 @@ def test_no_main_func():
     parser = ASTParser(tokens)
     program_node = parser.program()
     visitor = ASTVisitor(program_node)
-    node = visitor.visit_Program()
+    node = visitor.visit_program()
 
 
 def test_string():
@@ -84,7 +84,7 @@ def test_string():
     program_node = parser.program()
     visitor = ASTVisitor(program_node)
     with raises(InterpreterError):
-        node = visitor.visit_Program()
+        node = visitor.visit_program()
 
 
 def test_string():
@@ -106,7 +106,7 @@ def test_string():
     parser = ASTParser(tokens)
     program_node = parser.program()
     visitor = ASTVisitor(program_node)
-    node = visitor.visit_Program()
+    node = visitor.visit_program()
 
 
 def test_string():
@@ -129,5 +129,4 @@ def test_string():
     parser = ASTParser(tokens)
     program_node = parser.program()
     visitor = ASTVisitor(program_node)
-    node = visitor.visit_Program()
-
+    node = visitor.visit_program()

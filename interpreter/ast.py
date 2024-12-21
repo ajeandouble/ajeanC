@@ -1,4 +1,4 @@
-from typing import Union, Type, List
+from typing import Union, Type, List, Dict, Any
 from abc import ABC, abstractmethod
 from interpreter.tokenizer import Token, TokenTypes
 
@@ -239,14 +239,14 @@ class NoOp:
 
 
 class Function(AST):
-    def __init__(self, id: Token, args: List[Var], statements: List[AST]):
-        if id.type not in (TokenTypes.ID,):
+    def __init__(self, token: Token, args: List[Var], statements: List[AST]):
+        if token.type not in (TokenTypes.ID,):
             raise
         super().__init__()
-        self._id = self._token = id
+        self._id = self._token = token.value
         self.args: List[Var] = args or []
         self.statements: List[AST] = statements
-        self.locals = {}
+        self.locals: Dict[str, Any] = {}
 
     @property
     def id(self):
@@ -374,8 +374,8 @@ class IfCondition(AST):
         return str(self)
 
     def __eq__(self, other):
-        return type(self) == type(other) and (self.expr, self.statements, self.follow_else) == (
-            other.expr,
-            other.statements,
-            other.follow_else
-        )
+        return type(self) == type(other) and (
+            self.expr,
+            self.statements,
+            self.follow_else,
+        ) == (other.expr, other.statements, other.follow_else)

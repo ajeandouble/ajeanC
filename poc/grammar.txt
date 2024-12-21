@@ -6,8 +6,8 @@ function_decl:          "function" ID LPAREN function_args RPAREN compound_state
 function_args:          empty | function_args_list
 function_args_list:     ID | ID COMMA function_args_list
 
-compound_statement:     LBRACE empty RBRACE | LBRACE statement_list RBRACE
-statement_list:         statement | statement SEMI statement_list
+compound_statement:     LBRACE empty RBRACE | LBRACE statements_list RBRACE
+statements_list:         statement | statement SEMI statements_list
 statement:              expr | assignment | if_block | return_statement
 
 expr:                   arithmetic ((LT | LE | EQ | GE | GT) arithmetic)*
