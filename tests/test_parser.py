@@ -2,7 +2,7 @@ from pytest import raises
 from interpreter.lexer import Lexer
 from interpreter.tokenizer import Token as Token, TokenTypes as TT
 from interpreter.parser import ASTParser
-from interpreter.ast import BinOp, Num, Assign, Var, UnaryOp
+from interpreter.ast import Function, BinOp, Num, Assign, Var, UnaryOp
 from interpreter.exceptions import ParserError
 
 
@@ -151,7 +151,11 @@ def test_function():
     tokens = lexer.get_tokens()
     parser = ASTParser(tokens)
     node = parser.function()
-    assert node.id == Token(TT.ID, "main")
+    assert node == Function(
+        Token(TT.ID, "main"),
+        [Var(Token(TT.ID, "a")), Var(Token(TT.ID, "b")), Var(Token(TT.ID, "c"))],
+        [],
+    )
 
     input = """
         function
@@ -185,7 +189,6 @@ def test_program():
 
     input = """
         function main(a,b,c) { a = 2; }
-        function main(a,b,c) { a = 2; }
     """
     lexer = Lexer(input)
     tokens = lexer.get_tokens()
@@ -196,7 +199,6 @@ def test_program():
         a = 2; b = 3; c = 3 * 2;
 
         function main(a,b,c) {a = 2; }
-        function main(a,b,c) { a = 2; }
     """
     lexer = Lexer(input)
     tokens = lexer.get_tokens()
@@ -235,6 +237,23 @@ def test_string():
     tokens = lexer.get_tokens()
     parser = ASTParser(tokens)
     node = parser.program()
+
+
+def test_standalone_expressions():
+    input = "1+1;;;;;;;;;;;;a;"
+    lexer = Lexer(input)
+    tokens = lexer.get_tokens()
+    print(tokens)
+    parser = ASTParser(tokens)
+    node = parser.global_statements_lists()
+
+    input = "1;2;3("
+    lexer = Lexer(input)
+    tokens = lexer.get_tokens()
+    print(tokens)
+    parser = ASTParser(tokens)
+    with raises(ParserError):
+        node = parser.global_statements_lists()
 
 
 def test_conditions():

@@ -9,5 +9,8 @@ This is a simple interpreter in python3.
 
 ## TODO
 
-[ ] Control flow
+[X] Parser
+    [.] Control flow
+    [ ] Every global statements should be hoisted before function declarations
+    [ ] Testing
 [ ] Port to zig

@@ -98,8 +98,7 @@ class ASTParser:
                 return self.variable()
 
         self._skip_eols()
-        print(curr_token.type)
-        raise ParserError("parsing was stopped due to invalid token")
+        raise ParserError(f"parsing was stopped due to invalid token {curr_token.type}")
 
     def term(self) -> AST:
         print(f"{self.term.__name__}:\t\t{self.current_token} [{self._tok_idx}]")
@@ -157,6 +156,7 @@ class ASTParser:
         return Assign(token, left, right)
 
     def call_args(self):
+        print(f"{self.call_args.__name__}:\t{self.current_token} [{self._tok_idx}]")
         args = []
         while self.current_token.type in (TT.ID, TT.INTEGER):
             if self.current_token.type == TT.ID:
@@ -170,7 +170,8 @@ class ASTParser:
             self._eat(TT.COMMA)
         return args
 
-    def function_call(self):
+    def function_call(self) -> FunctionCall:
+        print(f"{self.function_call.__name__}:\t{self.current_token} [{self._tok_idx}]")
         self._skip_eols()
         token = self.current_token
         self._eat(TT.ID, skip_eols=True)
@@ -181,13 +182,12 @@ class ASTParser:
         self._eat(TT.RPAREN, skip_eols=True)
         return FunctionCall(token, args)
 
-    def statement(self) -> AST:
+    def statement(self) -> AST | NoOp:
         print(f"{self.statement.__name__}:\t{self.current_token} [{self._tok_idx}]")
         self._skip_eols()
         # stand-alone expressions e.g. `2 + 2;`, `;` or `my_var;`
         if self.current_token.type in (
             TT.INTEGER,
-            TT.ID,
             TT.LPAREN,
             TT.PLUS,
             TT.MINUS,
@@ -196,35 +196,56 @@ class ASTParser:
             and self._peek().type not in (TT.ASSIGN, TT.LPAREN)
         ):
             node = self.expr()
+            self._eat(TT.SEMI, skip_eols=True)
         elif self.current_token.type == TT.ID:
             if self._peek().type == TT.LPAREN:
                 node = self.function_call()
             elif self._peek().type == TT.ASSIGN:
                 node = self.assignment_statement()
+            self._eat(TT.SEMI, skip_eols=True)
         elif self.current_token.type == TT.RETURN:
             node = self.return_value()
+            self._eat(TT.SEMI, skip_eols=True)
         elif self.current_token.type == TT.IF:
             node = self.if_condition()
         elif self.current_token.type == TT.SEMI:
+            self._eat(TT.SEMI, skip_eols=True)
             node = NoOp()
         else:
-            raise ParserError(f"Bad statement token {node.type}")
+            raise ParserError(f"Bad statement token {self.current_token.type}")
         self._skip_eols()
-        self._eat(TT.SEMI, skip_eols=True)
         return node
 
     def statements_list(self):
-        print(f"{"stmts_lst"}:\t{self.current_token} [{self._tok_idx}]")
+        print(
+            f"stmts_lst:\t{self.current_token} [{self._tok_idx}]",
+            self.current_token.type,
+        )
         self._skip_eols()
         stmt_node = None
         statements_nodes = []
-        while self.current_token.type != TT.RBRACE and type(stmt_node) not in (NoOp,):
+        while self.current_token.type != TT.RBRACE:
             stmt_node = self.statement()
             print(f"*stmt_node*:\t{stmt_node}")
             if stmt_node:
                 statements_nodes.append(stmt_node)
         self._skip_eols()
         return statements_nodes
+
+    def global_statements_lists(self):
+        print(f"global_stmts_lst:\t{self.current_token} [{self._tok_idx}]")
+        self._skip_eols()
+        curr_node = None
+        stmt_nodes = []
+        while (
+            self.current_token.type != TT.FUNCTION and self.current_token.type != TT.EOF
+        ):
+            curr_node = self.statement()
+            print(f"*stmt_node*:\t{curr_node}")
+            if curr_node:
+                stmt_nodes.append(curr_node)
+        self._skip_eols()
+        return stmt_nodes
 
     def decl_args(self):
         args_nodes = []
@@ -248,14 +269,18 @@ class ASTParser:
     def function(self):
         print(f"{self.function.__name__}:\t{self.current_token} [{self._tok_idx}]")
         self._skip_eols()
+
         self._eat(TT.FUNCTION, skip_eols=True)
         token = self.current_token
         self._eat(TT.ID, skip_eols=True)
+
         self._eat(TT.LPAREN, skip_eols=True)
         args_nodes = self.decl_args()
         self._eat(TT.RPAREN, skip_eols=True)
+
         statements = self.compound_statements()
-        print(token, args_nodes, statements)
+
+        self._skip_eols()
         return Function(token, args_nodes, statements)
 
     def else_condition(self):
@@ -270,16 +295,13 @@ class ASTParser:
 
     def if_condition(self):
         self._skip_eols()
-        self._eat(TT.IF)
-        self._skip_eols()
-        self._eat(TT.LPAREN)
+        self._eat(TT.IF, skip_eols=True)
+        self._eat(TT.LPAREN, skip_eols=True)
         expr = self.expr()
-        self._eat(TT.RPAREN)
-        self._skip_eols()
-        self._eat(TT.LBRACE)
-        self._skip_eols()
+        self._eat(TT.RPAREN, skip_eols=True)
+        self._eat(TT.LBRACE, skip_eols=True)
         statements = self.statements_list()
-        self._eat(TT.RBRACE)
+        self._eat(TT.RBRACE, skip_eols=True)
         self._skip_eols()
         follow_else = None
         if self.current_token.type == TT.ELSE:
@@ -288,13 +310,11 @@ class ASTParser:
 
     def program(self):
         self._skip_eols()
+        global_stmts = self.global_statements_lists()
         functions = [self.function()]
-        # while self.current_token.type == TT.FUNCTION:
-        #     functions.append(self.function())
-        #     return 42
-        #     print(self.current_token.type)
-        #     self._skip_eols()
-        #     self.statements_list()
-        #     self._skip_eols()
-        return Program(functions, [])
-        # return Program(functions, statements)
+        while self.current_token.type == TT.FUNCTION:
+            print("--------FUNCTION--------")
+            functions.append(self.function())
+            print(self.current_token.type)
+        # print("\nProgram:")
+        return Program(functions, global_stmts)

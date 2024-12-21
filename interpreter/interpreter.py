@@ -220,12 +220,12 @@ class ASTVisitor:
 
         # FIXME: verify and uncomment
         # execute global code
-        # for stmt in self._program.statements:
-        #     if type(stmt) == NoOp:
-        #         continue
-        #     if type(stmt) == FunctionCall:
-        #         raise InterpreterError("no function call allowed in global scope")
-        #     self.visit(stmt)
+        for stmt in self._program.statements:
+            if type(stmt) == NoOp:
+                continue
+            if type(stmt) == FunctionCall:
+                raise InterpreterError("no function call allowed in global scope")
+            self.visit(stmt)
 
         # execute main()
-        self.visit_main(self._main_function)
+        # self.visit_main(self._main_function)

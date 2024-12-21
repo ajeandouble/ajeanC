@@ -243,7 +243,7 @@ class Function(AST):
         if token.type not in (TokenTypes.ID,):
             raise
         super().__init__()
-        self._id = self._token = token.value
+        self._id = self._token = token
         self.args: List[Var] = args or []
         self.statements: List[AST] = statements
         self.locals: Dict[str, Any] = {}
@@ -316,8 +316,13 @@ class FunctionCall(AST):
     def token(self):
         return self.func
 
-    def __repr__(self):
+    def __str__(self):
+        # return f"{FunctionCall.__name__}({self.func}, {self.args})"
+        # FIXME: __str__ error
         return f"{FunctionCall.__name__}({self.func}, {self.args})"
+
+    def __repr__(self):
+        str(self)
 
 
 class Program(AST):
@@ -368,7 +373,13 @@ class IfCondition(AST):
         self.follow_else = follow_else
 
     def __str__(self):
-        return f"{IfCondition.__name__}({self.expr}, {self.statements}, {self.follow_else})"
+        statements_str = (
+            ", ".join(str(stmt) for stmt in self.statements)
+            if self.statements
+            else "None"
+        )
+        follow_else_str = str(self.follow_else) if self.follow_else else "None"
+        return f"{IfCondition.__name__}({self.expr}, [{statements_str}], {follow_else_str})"
 
     def __repr__(self):
         return str(self)
