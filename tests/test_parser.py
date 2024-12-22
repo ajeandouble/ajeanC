@@ -227,7 +227,7 @@ def test_string():
     node = parser.program()
 
 
-def test_string():
+def test_string_2():
     input = """
     function main() {
         var = "abczd";

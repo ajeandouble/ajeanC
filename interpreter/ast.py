@@ -354,16 +354,13 @@ class ElseCondition(AST):
         self.statements = statements
 
     def __str__(self):
-        return f"{ElseCondition.__name__}({self.expr}, {self.statements})"
+        return f"{ElseCondition.__name__}({self.statements})"
 
     def __repr__(self):
         return str(self)
 
     def __eq__(self, other):
-        return type(self) == type(other) and (self.expr, self.statements) == (
-            other.expr,
-            other.statements,
-        )
+        return type(self) == type(other) and self.statements == other.statements
 
 
 class IfCondition(AST):

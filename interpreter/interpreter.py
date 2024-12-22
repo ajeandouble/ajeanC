@@ -195,7 +195,7 @@ class ASTVisitor:
         if result:
             return self.visit_statements(node.statements)
         elif node.follow_else:
-            return self.visit_statements(node.follow_else)
+            return self.visit_statements(node.follow_else.statements)
 
     def visit_num(self, node: Num) -> int:
         print(f"{self.visit_num.__name__}:\t{node}")

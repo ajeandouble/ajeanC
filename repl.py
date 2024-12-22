@@ -24,10 +24,11 @@ def main():
     function g(a, b, c) { return -42; }
     function h(a) { return 12 * a; }
     function f(a) {
-        if (1) { return g(1,2,3) + 5 + h(5);}
+        if (1) { return g(1,2,3) + 5 + h(5);} else { 42; }
         if (1) { return g(1, 2, 3) ; }
     }
     """
+    input = """function main() { if (0) { 43; } else if (1 - 1 + 1) { if (1) { return -44; } } else { return 45; } }"""
     lexer = Lexer(input)
     tokens = lexer.get_tokens()
     print(tokens)

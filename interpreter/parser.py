@@ -284,12 +284,14 @@ class ASTParser:
         return Function(token, args_nodes, statements)
 
     def else_condition(self):
-        self._skip_eols()
-        self._eat(TT.ELSE)
-        self._skip_eols()
-        self._eat(TT.LBRACE)
-        statements = self.statements_list()
-        self._eat(TT.RBRACE)
+        print(f"{self.else_condition.__name__}:\t{self.current_token}")
+        self._eat(TT.ELSE, skip_eols=True)
+        print("else_", self.current_token.type)
+        if self.current_token.type == TT.IF:
+            statements = [self.if_condition()]
+        elif self.current_token.type == TT.LBRACE:
+            statements = self.compound_statements()
+            print("WWW\t\t\t\t\t\t", statements)
         self._skip_eols()
         return ElseCondition(statements)
 
@@ -299,10 +301,7 @@ class ASTParser:
         self._eat(TT.LPAREN, skip_eols=True)
         expr = self.expr()
         self._eat(TT.RPAREN, skip_eols=True)
-        self._eat(TT.LBRACE, skip_eols=True)
-        statements = self.statements_list()
-        self._eat(TT.RBRACE, skip_eols=True)
-        self._skip_eols()
+        statements = self.compound_statements()
         follow_else = None
         if self.current_token.type == TT.ELSE:
             follow_else = self.else_condition()
