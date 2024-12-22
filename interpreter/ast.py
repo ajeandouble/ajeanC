@@ -261,7 +261,7 @@ class Function(AST):
         return self._token
 
     def __str__(self):
-        return f"{Function.__name__}({self.id}, {self.args}, {self.statements})"
+        return f"{Function.__name__}({self.id}, {self.args}, {[str(stmt) for stmt in self.statements] if self.statements else "None"})"
 
     def __repr__(self):
         return str(self)
@@ -302,8 +302,11 @@ class ReturnVal(AST):
     def token(self, new_return_val):
         self._return_val = self._token = new_return_val
 
-    def __repr__(self):
+    def __str__(self):
         return f"{ReturnVal.__name__}({self._return_val})"
+
+    def __repr__(self):
+        return str(self)
 
 
 class FunctionCall(AST):
@@ -332,7 +335,7 @@ class Program(AST):
         self.statements = statements
 
     def __str__(self):
-        return f"{Program.__name__}({self.functions}, {self.statements})"
+        return f"{Program.__name__}({self.functions}, {[str(stmt) for stmt in self.statements] if self.statements else "None"})"
 
     def __repr__(self):
         return str(self)

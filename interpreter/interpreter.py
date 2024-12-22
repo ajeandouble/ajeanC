@@ -115,25 +115,48 @@ class ASTVisitor:
     #     _ = self._call_stack.pop()
 
     # FIXME: useless, could simply pass main node, handle os.exit() in caller func
+    # TODO: parse stdin args
     def visit_main(self, node: Function):
-        # TODO: parse stdin args
+        print(f"{self.visit_main.__name__}:\t\t{node}")
         self._call_stack.append(FunctionFrame(node))
-        self.visit_statements(node.statements)
-        pass
+        return self.visit_statements(node.statements)
 
     def visit_stmt(self, node: AST):
-        if type(node) == BinOp:
+        print(f"visit_statement:\t{node}")
+        if type(node) is NoOp:
+            return NoOp
+        elif type(node) is Function:
+            return self.visit_statements(node.statements)
+        elif type(node) is FunctionCall:
+            return self.visit_function_call(node)
+        elif type(node) is BinOp:
             return self.visit_binop(node)
-        else:
-            raise InterpreterError("fuck")
+        elif type(node) is UnaryOp:
+            return self.visit_unaryop(node)
+        elif type(node) is Assign:
+            return self.visit_assign(node)
+        elif type(node) is Var:
+            return self.visit_var(node)
+        elif type(node) is Num:
+            return self.visit_string(node)
+        elif type(node) is String:
+            return self.visit_string(node)
+        elif type(node) is ReturnVal:
+            return self.visit_returnval(node)
+        elif type(node) is IfCondition:
+            return self.visit_if_condition(node)
 
     def visit_statements(self, statements: List[AST]):
+        print(
+            f"visit_stmts:\t{[str(stmt) for stmt in statements] if statements else "None"}"
+        )
         for stmt in statements:
             visited_node = self.visit_stmt(stmt)
             if type(visited_node) == ReturnVal:
-                return self._ret
+                return visited_node
 
     def visit_function_call(self, node: FunctionCall):
+        print(f"{self.visit_function_call.__name__}:\t{node}")
         # builtins = ["print"]
         # if node.func.value in builtins:
         #     for arg in node.args:
@@ -155,25 +178,31 @@ class ASTVisitor:
         self._call_stack.append(FunctionFrame(callee_func))
         self._call_stack[-1].locals = locals
         self.visit_statements(callee_func.statements)
-        return self._ret
+        saved_ret = self._ret
+        self._ret = None
+        return saved_ret
 
-    def visit_ReturnVal(self, node: ReturnVal):
-        self._ret = self.visit(node._return_val)
-        print("_ret=", self._ret)
+    def visit_returnval(self, node: ReturnVal):
+        print(f"{self.visit_returnval.__name__}:\t{node}")
+        self._ret = self.visit_stmt(node._return_val)
+        print(f"\t\t{node}")
         return node
 
-    def visit_IfCondition(self, node: IfCondition):
+    def visit_if_condition(self, node: IfCondition):
+        print(f"{self.visit_if_condition.__name__}:\t{node}")
         result = self.visit(node.expr)
-        print(f"lll{node.expr}ll\t->\t{result}")
+        print(f"*result*:\t\t{result}")
         if result:
             return self.visit_statements(node.statements)
-        else:
+        elif node.follow_else:
             return self.visit_statements(node.follow_else)
+
+    def visit_num(self, node: Num) -> int:
+        print(f"{self.visit_num.__name__}:\t{node}")
+        return node.token.value
 
     def visit(self, node: AST) -> Any:
         print(f"len={len(self._call_stack)}")
-        if not len(self._call_stack):
-            return
         if type(node) is NoOp:
             return
         elif type(node) is Function:
@@ -189,17 +218,18 @@ class ASTVisitor:
         elif type(node) is Var:
             return self.visit_var(node)
         elif type(node) is Num:
-            return self.visit_string(node)
+            return self.visit_num(node)
         elif type(node) is String:
             return self.visit_string(node)
         elif type(node) is ReturnVal:
-            return self.visit_ReturnVal(node)
+            return self.visit_returnval(node)
         elif type(node) is IfCondition:
-            return self.visit_IfCondition(node)
+            return self.visit_if_condition(node)
         # elif
         #     raise NotImplementedError("unknown token:", type(node))
 
     def visit_program(self):
+        print(self.visit_program.__name__)
         # check if duplicate function names
         func_names = [f.id.value for f in self.program.functions]
         if len(func_names) != len(set(func_names)):
@@ -213,19 +243,25 @@ class ASTVisitor:
             raise InterpreterError("main function not found")
         self._main_function = main_func[0]
 
+        # import os
+
+        # print(self.program.functions)
+        # os._exit(42)
         for func in self.program.functions:
             if func.id.value == "main":
                 continue
             self._globals[func.id.value] = func
 
-        # FIXME: verify and uncomment
         # execute global code
         for stmt in self._program.statements:
+            print(f"global_statement:\t{stmt}")
             if type(stmt) == NoOp:
                 continue
             if type(stmt) == FunctionCall:
+                print(stmt)
                 raise InterpreterError("no function call allowed in global scope")
-            self.visit(stmt)
+            self.visit_stmt(stmt)
 
         # execute main()
-        # self.visit_main(self._main_function)
+        self.visit_main(self._main_function)
+        return self._ret
