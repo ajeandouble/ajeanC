@@ -5,6 +5,7 @@ from interpreter.exceptions import UnknownSymbolError
 
 
 res_keywords_toks = {
+    "func": Token(TokenTypes.FUNCTION),
     "function": Token(TokenTypes.FUNCTION),
     "return": Token(TokenTypes.RETURN),
     "if": Token(TokenTypes.IF),
@@ -30,7 +31,6 @@ single_chr_toks = {
     "=": Token(TokenTypes.ASSIGN),
     "<": Token(TokenTypes.LT),
     ">": Token(TokenTypes.GT),
-    "/": Token(TokenTypes.DIV),
     "(": Token(TokenTypes.LPAREN),
     ")": Token(TokenTypes.RPAREN),
     "{": Token(TokenTypes.LBRACE),
@@ -38,8 +38,8 @@ single_chr_toks = {
     ",": Token(TokenTypes.COMMA),
     ";": Token(TokenTypes.SEMI),
     "\n": Token(TokenTypes.EOL),
-    "[": Token(TokenTypes.LBRACE),
-    "]": Token(TokenTypes.RBRACE),
+    "[": Token(TokenTypes.LBRACK),
+    "]": Token(TokenTypes.RBRACK),
 }
 
 mult_chr_toks = {
@@ -138,17 +138,18 @@ class Lexer:
                 # TODO: check if it's robust enough
                 following_chr = self._peek(len(tok))
                 if following_chr and following_chr.isalnum():
-                    break
+                    continue
                 # if tok in kw_with_trailing_lparen and self._peek(len(tok)) not in whitespaces_no_nl_toks
                 not_res_kw = False
                 # print(tok)
-                for tok2 in res_keywords_toks:
-                    if tok == tok2:
-                        continue
-                    if self._look_ahead(len(tok) + len(tok2)) == tok + tok2:
-                        not_res_kw = True
-                if not_res_kw:
-                    break
+                # NOTE: WTF?
+                # for tok2 in res_keywords_toks:
+                #     if tok == tok2:
+                #         continue
+                #     if self._look_ahead(len(tok) + len(tok2)) == tok + tok2:
+                #         not_res_kw = True
+                # if not_res_kw:
+                #     break
                 self._advance(len(tok))
                 return res_keywords_toks[tok]
 

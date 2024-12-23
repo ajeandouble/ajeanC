@@ -49,6 +49,9 @@ class TokenTypes(AutoName):
     LPAREN = (auto(), False)
     RPAREN = (auto(), False)
 
+    LBRACK = (auto(), False)
+    RBRACK = (auto(), False)
+
     # DOT = (auto(), False)
     SEMI = (auto(), False)
 
