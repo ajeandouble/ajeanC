@@ -63,4 +63,8 @@ pub const Token = struct {
             .line = line,
         };
     }
+
+    pub fn str(self: @This()) []const u8 {
+        return std.fmt.bufPrint("{}:\"{}\" l{}", .{ self.type, self.lexeme, self.line });
+    }
 };

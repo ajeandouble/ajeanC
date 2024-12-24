@@ -3,18 +3,29 @@ const dbg = @import("debug.zig");
 const Lexer = @import("lexer.zig").Lexer;
 const Token = @import("tokens.zig").Token;
 const TokenType = @import("tokens.zig").TokenType;
+const Parser = @import("./parser.zig").Parser;
 
 const MAX_STDIN_SIZE = 4096;
 
-fn lex_tokens(input_stdin: []u8) !void {
+fn lexTokens(input_stdin: []u8, allocator: std.mem.Allocator) !std.ArrayList(Token) {
     var lexer = try Lexer.init(input_stdin);
 
-    var tok = try lexer.nextToken();
-    while (tok.type != TokenType.eof) {
-        dbg.print("{}: '{s}' L:{}\n", .{ tok.type, tok.lexeme, tok.line });
-        tok = try lexer.nextToken();
+    var tokens = std.ArrayList(Token).init(allocator);
+    errdefer tokens.deinit();
+    var nextToken = try lexer.nextToken();
+    try tokens.append(nextToken);
+    while (nextToken.type != TokenType.eof) {
+        dbg.print("{}: '{s}' L:{}\n", .{ tokens.getLast().type, tokens.getLast().lexeme, tokens.getLast().line });
+        nextToken = try lexer.nextToken();
+        try tokens.append(nextToken);
     }
-    dbg.print("{}: '{s}' L:{}\n", .{ tok.type, tok.lexeme, tok.line });
+    dbg.print("{}: '{s}' L:{}\n", .{ tokens.getLast().type, tokens.getLast().lexeme, tokens.getLast().line });
+    return tokens;
+}
+
+fn parseTokens(tokens: std.ArrayList(Token), allocator: std.mem.Allocator) !void {
+    var parser = try Parser.init(tokens.items, allocator);
+    _ = try parser.parse();
 }
 
 fn parseArgs(args: [][:0]u8) void {
@@ -26,15 +37,23 @@ fn parseArgs(args: [][:0]u8) void {
 }
 
 pub fn main() !u8 {
-    const args = try std.process.argsAlloc(std.heap.page_allocator);
-    defer std.heap.page_allocator.free(args);
+    const allocator = std.heap.page_allocator;
+
+    const args = try std.process.argsAlloc(allocator);
+    defer allocator.free(args);
     parseArgs(args);
 
     const stdin = std.io.getStdIn().reader();
-    const allocator = std.heap.page_allocator;
     const input_stdin = try stdin.readAllAlloc(allocator, MAX_STDIN_SIZE);
     defer allocator.free(input_stdin);
 
-    try lex_tokens(input_stdin);
+    const tokens = lexTokens(input_stdin, allocator) catch {
+        return 1;
+    };
+    try parseTokens(tokens, allocator);
+    tokens.deinit();
+
+    // try parseTokens(
+
     return 0;
 }
