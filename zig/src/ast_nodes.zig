@@ -5,7 +5,7 @@ const TokenType = @import("./tokens.zig").TokenType;
 
 pub const Num = struct {
     token: Token = undefined,
-    value: f64 = undefined,
+    value: i64 = undefined,
 
     pub fn make(num: Num, allocator: std.mem.Allocator) anyerror!*Num {
         const instance = try allocator.create(Num);
@@ -20,6 +20,11 @@ pub const BinOp = struct {
     right: *const Node = undefined,
 
     pub fn make(binop: BinOp, allocator: std.mem.Allocator) anyerror!*BinOp {
+        dbg.print(
+            "left {} right {}\n",
+            .{ binop.left.*, binop.right.* },
+            @src(),
+        );
         const instance = try allocator.create(BinOp);
         instance.* = binop;
         return instance;

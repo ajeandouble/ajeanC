@@ -15,11 +15,11 @@ fn lexTokens(input_stdin: []u8, allocator: std.mem.Allocator) !std.ArrayList(Tok
     var nextToken = try lexer.nextToken();
     try tokens.append(nextToken);
     while (nextToken.type != TokenType.eof) {
-        dbg.print("{}: '{s}' L:{}\n", .{ tokens.getLast().type, tokens.getLast().lexeme, tokens.getLast().line });
+        dbg.print("{}: '{s}' L:{}\n", .{ tokens.getLast().type, tokens.getLast().lexeme, tokens.getLast().line }, @src());
         nextToken = try lexer.nextToken();
         try tokens.append(nextToken);
     }
-    dbg.print("{}: '{s}' L:{}\n", .{ tokens.getLast().type, tokens.getLast().lexeme, tokens.getLast().line });
+    dbg.print("{}: '{s}' L:{}\n", .{ tokens.getLast().type, tokens.getLast().lexeme, tokens.getLast().line }, @src());
     return tokens;
 }
 

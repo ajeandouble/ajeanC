@@ -12,12 +12,9 @@ pub const Parser = struct {
     tokens: []Token = undefined,
     tok_idx: usize = 0,
     allocator: std.mem.Allocator = undefined,
+    dummy: i64 = 0,
 
     pub fn init(tokens: []Token, allocator: std.mem.Allocator) !Self {
-        for (tokens) |tok| {
-            dbg.print("[{} \"{s}\" L:{}] ", .{ tok.type, tok.lexeme, tok.line });
-        }
-
         const parser = Self{ .tokens = try allocator.alloc(Token, tokens.len), .allocator = allocator };
         @memcpy(parser.tokens, tokens);
         return parser;
@@ -39,72 +36,105 @@ pub const Parser = struct {
         return self.tokens[self.tok_idx + offset];
     }
 
-    pub fn parse_number(self: *Self) !Node {
-        dbg.print("{s} {}\n", .{ @src().fn_name, self.tok_idx });
+    pub fn parse_number(self: *Self) !*Node {
+        //dbg.print("{s} {}\n", .{ @src().fn_name, self.tok_idx });
         const token = try self.current();
         try self.eat(TokenType.number);
-        const n = try std.fmt.parseFloat(f64, token.lexeme);
-        // dbg.print("\n[{}]", .{n});
-        return Node{ .num = try AstNodes.Num.make(AstNodes.Num{ .token = token, .value = n }, self.allocator) };
+        const n = try std.fmt.parseInt(i64, token.lexeme, 10);
+        dbg.print("\t\t\t\t\t{s} {}\n", .{ token.lexeme, n }, @src());
+        // //dbg.print("\n[{}]", .{n});
+        const num = Node{ .num = try AstNodes.Num.make(AstNodes.Num{ .token = token, .value = n }, self.allocator) };
+        dbg.print("{*}{s}\n", .{ num.num, token.lexeme }, @src());
+        const node = try self.allocator.create(Node);
+        node.* = num;
+        return node;
     }
 
-    pub fn parse_factor(self: *Self) !Node {
+    pub fn parse_factor(self: *Self) !*Node {
+        dbg.print("\n", .{}, @src());
         const node = try self.parse_number();
         // TODO: check for unary ops (plus, minus), ids and numbers
         return node;
     }
-    pub fn parse_term(self: *Self) !Node {
+    pub fn parse_term(self: *Self) !*Node {
+        dbg.print("\n", .{}, @src());
         const node = try self.parse_factor();
         // TODO: check for binary ops tokens (mul, div)
         return node;
     }
 
-    pub fn parse_arithmetic(self: *Self) !Node {
+    pub fn parse_arithmetic(self: *Self) !*Node {
+        dbg.print("\n", .{}, @src());
         var node = try self.parse_term();
         var curr = try self.current();
         while (curr.type == TokenType.plus or curr.type == TokenType.minus) {
+            dbg.print("{} idx={}\n", .{ curr.type, self.tok_idx }, @src());
             try self.eat(curr.type);
-            const right = &(try self.parse_term());
-            node = Node{ .binop = try AstNodes.BinOp.make(AstNodes.BinOp{ .token = curr, .left = &node, .right = right }, self.allocator) };
-            dbg.print("{s}:{} {}\n", .{ @src().file, @src().line, self.tok_idx });
+            const right = try self.parse_term();
+            const saved_node = node;
+            const node_ptr = try self.allocator.create(Node);
+            node_ptr.* = Node{ .binop = try AstNodes.BinOp.make(AstNodes.BinOp{ .token = curr, .left = saved_node, .right = right }, self.allocator) };
+            node = node_ptr;
+            //dbg.print("{s}:{} {}\n", .{ @src().file, @src().line, self.tok_idx });
             curr = try self.current();
         }
         return node;
     }
 
-    pub fn parse_expr(self: *Self) !Node {
+    pub fn parse_expr(self: *Self) !*Node {
+        dbg.print("\n", .{}, @src());
         const node = try self.parse_arithmetic();
         // TODO: check for next comparison ops tokens
         return node;
     }
 
-    pub fn parse_statement(self: *Self) !Node {
+    pub fn parse_statement(self: *Self) !*Node {
+        dbg.print("\n", .{}, @src());
         const node = try self.parse_expr();
         // TODO: statements parsing
         return node;
     }
 
-    pub fn visit(self: *Self, node: Node) void {
-        switch (node) {
-            .num => |*num| dbg.print("v{}iiictory {} \n", .{ num.*.token.type, num.*.value }),
-            .binop => |*binop| {
-                // _ = binop;
-                dbg.print("{*}\n", .{binop.*.left});
-                dbg.print("{*}\n", .{binop.*.right});
-                _ = self;
-                // self.visit(binop.*.left.*);
-                // dbg.print(" + ", .{});
-                // self.visit(binop.*.right.*);
+    pub fn visit(self: *Self, node: *const Node) i64 {
+        switch (node.*) {
+            .num => |*num| {
+                std.debug.print("num {} \n", .{num.*.value});
+                return num.*.value;
+                // dbg.print("{}({})\n", .{ num.*.token.type, num.*.value }, @src());
             },
-            // else => dbg.print("yo\n", .{}),
+            .binop => |*binop| {
+                std.debug.print("binop {s} \n", .{binop.*.token.lexeme});
+
+                // _ = binop;
+                dbg.print("left\t{*}\n", .{binop.*.left}, @src());
+                switch (binop.*.token.type) {
+                    TokenType.plus => {
+                        const l = self.visit(binop.*.left);
+                        const r = self.visit(binop.*.right);
+                        self.dummy += l + r;
+                    },
+                    else => unreachable,
+                }
+                dbg.print("+\n", .{}, @src());
+                dbg.print("right\t{*}\n", .{binop.*.right}, @src());
+                // self.visit(binop.*.right);
+            },
         }
+        return 0;
     }
 
-    pub fn parse(self: *Self) !void {
+    pub fn parse(self: *Self) !*Node {
         const root_node = try self.parse_statement();
-        self.visit(root_node);
+        dbg.print("\n", .{}, @src());
+        _ = self.visit(root_node);
+        dbg.print("{}", .{self.dummy}, @src());
+        return root_node;
         // _ = num1;
         // const num2 = try Node.Num.init(Token{ .type = TokenType.number, .lexeme = "1", .line = 1 });
         // _ = add;
     }
 };
+
+const expect = std.testing.expect;
+
+test "parser.zig" {}

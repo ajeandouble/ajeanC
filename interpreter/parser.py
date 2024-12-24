@@ -312,7 +312,6 @@ class ASTParser:
         global_stmts = self.global_statements_lists()
         functions = [self.function()]
         self._skip_eols()
-        print("whaaaaat", self.current_token)
         while self.current_token.type == TT.FUNCTION:
             print("--------FUNCTION--------")
             functions.append(self.function())

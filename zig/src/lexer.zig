@@ -43,8 +43,6 @@ const whitespaces_no_nl = std.StaticStringMap(undefined).initComptime(.{
     .{"\r"},
 });
 
-// NOTE: What about hashsets?
-
 pub const Lexer: type = struct {
     const Self = @This();
     source: []u8 = undefined,
@@ -61,7 +59,7 @@ pub const Lexer: type = struct {
     }
 
     pub fn nextToken(self: *Self) !Token {
-        dbg.print("{}:'{c}'\t", .{ self.pos, self.source[self.pos] });
+        // dbg.print("{}:'{c}'\t", .{ self.pos, self.source[self.pos] }, @src());
         self.skipWhitespace() catch {
             return Token{ .type = TokenType.eof, .lexeme = "", .line = self.line };
         };
