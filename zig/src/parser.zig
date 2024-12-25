@@ -200,4 +200,4 @@ const expect = std.testing.expect;
 fn setupTests() !void {}
 fn teardownTests() !void {}
 
-test "parser.zig" {}
+test "parseExpr" {}

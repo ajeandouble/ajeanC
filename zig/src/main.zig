@@ -8,7 +8,7 @@ const Parser = @import("./parser.zig").Parser;
 const MAX_STDIN_SIZE = 4096;
 
 fn lexTokens(input_stdin: []u8, allocator: std.mem.Allocator) !std.ArrayList(Token) {
-    var lexer = try Lexer.init(input_stdin);
+    var lexer = try Lexer.init(input_stdin, allocator);
 
     var tokens = std.ArrayList(Token).init(allocator);
     errdefer tokens.deinit();
@@ -47,7 +47,8 @@ pub fn main() !u8 {
     const input_stdin = try stdin.readAllAlloc(allocator, MAX_STDIN_SIZE);
     defer allocator.free(input_stdin);
 
-    const tokens = lexTokens(input_stdin, allocator) catch {
+    const tokens = lexTokens(input_stdin, allocator) catch |err| {
+        std.debug.print("{}asdasd\n", .{err});
         return 1;
     };
     try parseTokens(tokens, allocator);
