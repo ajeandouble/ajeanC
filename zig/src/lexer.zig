@@ -86,7 +86,7 @@ pub const Lexer: type = struct {
 
         for (mult_chr_toks.keys()) |kw| {
             if (std.mem.eql(u8, self.lookAhead(kw.len), kw)) {
-                const tokType = reserved_kws.get(kw) orelse unreachable;
+                const tokType = mult_chr_toks.get(kw) orelse unreachable;
                 try self.advance(kw.len);
                 return Token{ .type = tokType, .lexeme = kw, .line = self.line };
             }
@@ -135,7 +135,7 @@ pub const Lexer: type = struct {
             n += @intCast(self.peek(0));
             try self.advance(1);
         }
-        return Token{ .type = TokenType.number, .lexeme = self.source[start..self.pos], .line = self.line };
+        return Token{ .type = TokenType.integer, .lexeme = self.source[start..self.pos], .line = self.line };
     }
 
     fn id(self: *Self) !Token {

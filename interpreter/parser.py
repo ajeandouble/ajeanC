@@ -111,7 +111,7 @@ class ASTParser:
                 node = BinOp(saved_token, node, self.factor())
             elif self.current_token.type == TT.DIV:
                 self._eat(TT.DIV)
-                node = BinOp(saved_token, node, self.factor())
+                node = BnOp(saved_token, node, self.factor())
         self._skip_eols()
         return node
 
@@ -197,6 +197,7 @@ class ASTParser:
         ):
             node = self.expr()
             self._eat(TT.SEMI, skip_eols=True)
+        ####################################################
         elif self.current_token.type == TT.ID:
             if self._peek().type == TT.LPAREN:
                 node = self.function_call()
@@ -312,6 +313,7 @@ class ASTParser:
         global_stmts = self.global_statements_lists()
         functions = [self.function()]
         self._skip_eols()
+        print("whaaaaat", self.current_token)
         while self.current_token.type == TT.FUNCTION:
             print("--------FUNCTION--------")
             functions.append(self.function())

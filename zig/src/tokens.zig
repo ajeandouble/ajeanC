@@ -44,7 +44,7 @@ pub const TokenType = enum {
 
     // Value associated token,
     string,
-    number,
+    integer,
     id,
 
     // Debug purpose only
