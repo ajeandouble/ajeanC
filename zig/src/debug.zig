@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub var verbose: bool = false;
+pub var verbose: bool = true;
 
 pub fn print(comptime fmt: []const u8, args: anytype, comptime src: std.builtin.SourceLocation) void {
     if (verbose) {

@@ -332,7 +332,7 @@ test "lexer values" {
 
     // String token
     try std.testing.expect(tokens.items[0].type == TokenType.string);
-    try std.testing.expect(std.mem.eql(u8, tokens.items[0].lexeme, "\"hello\""));
+    try std.testing.expectEqualStrings(tokens.items[0].lexeme, "\"hello\"");
 
     // Integer token
     try std.testing.expect(tokens.items[1].type == TokenType.integer);
@@ -380,6 +380,7 @@ test "lexer mixed expression" {
 
     teardownLexStringTest(tokens, lexer);
 }
+
 test "lexer error cases" {
     // Test invalid character
     const allocator = std.testing.allocator;

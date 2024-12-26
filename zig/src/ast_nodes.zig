@@ -48,4 +48,45 @@ pub const UnaryOp = struct {
     }
 };
 
-pub const Node = union(enum) { num: *Num, binop: *BinOp, unaryop: *UnaryOp };
+pub const Variable = struct {
+    const Self = @This();
+    token: Token = undefined,
+    id: []const u8,
+
+    pub fn make(variable: Self, allocator: std.mem.Allocator) anyerror!*Variable {
+        dbg.print(
+            "id {s} lexeme={s}\n",
+            .{ variable.id, variable.token.lexeme },
+            @src(),
+        );
+        const instance = try allocator.create(Variable);
+        instance.* = variable;
+        return instance;
+    }
+};
+
+pub const Function = struct {
+    const Self = @This();
+    token: Token = undefined,
+    id: []const u8,
+    args: []const *Variable,
+    statements: []const *Node,
+
+    pub fn make(variable: Self, allocator: std.mem.Allocator) anyerror!*Function {
+        dbg.print(
+            "id {s} lexeme={s} args=.., statements=[] \n",
+            .{ variable.id, variable.token.lexeme },
+            @src(),
+        );
+        const instance = try allocator.create(Function);
+        instance.* = variable;
+        return instance;
+    }
+};
+
+pub const Node = union(enum) {
+    num: *Num,
+    binop: *BinOp,
+    unaryop: *UnaryOp,
+    variable: *Variable,
+};

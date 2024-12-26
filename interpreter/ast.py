@@ -246,7 +246,6 @@ class Function(AST):
         self._id = self._token = token
         self.args: List[Var] = args or []
         self.statements: List[AST] = statements
-        self.locals: Dict[str, Any] = {}
 
     @property
     def id(self):
@@ -261,7 +260,7 @@ class Function(AST):
         return self._token
 
     def __str__(self):
-        return f"{Function.__name__}({self.id}, {self.args}, {[str(stmt) for stmt in self.statements] if self.statements else "None"})"
+        return f"{Function.__name__}({self.id}, {self.args}, {[str(stmt) for stmt in self.statements] if self.statements else []})"
 
     def __repr__(self):
         return str(self)
@@ -335,7 +334,7 @@ class Program(AST):
         self.statements = statements
 
     def __str__(self):
-        return f"{Program.__name__}({self.functions}, {[str(stmt) for stmt in self.statements] if self.statements else "None"})"
+        return f"{Program.__name__}({self.functions}, {[str(stmt) for stmt in self.statements] if self.statements else []})"
 
     def __repr__(self):
         return str(self)

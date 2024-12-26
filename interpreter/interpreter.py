@@ -148,7 +148,7 @@ class ASTVisitor:
 
     def visit_statements(self, statements: List[AST]):
         print(
-            f"visit_stmts:\t{[str(stmt) for stmt in statements] if statements else "None"}"
+            f"visit_stmts:\t{[str(stmt) for stmt in statements] if statements else []}"
         )
         for stmt in statements:
             visited_node = self.visit_stmt(stmt)
