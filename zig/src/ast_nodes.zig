@@ -65,28 +65,22 @@ pub const Variable = struct {
     }
 };
 
-pub const Function = struct {
+pub const FunctionCall = struct {
     const Self = @This();
     token: Token = undefined,
     id: []const u8,
-    args: []const *Variable,
-    statements: []const *Node,
+    args: std.ArrayList(*Node),
 
-    pub fn make(variable: Self, allocator: std.mem.Allocator) anyerror!*Function {
+    pub fn make(func_call: Self, allocator: std.mem.Allocator) anyerror!*FunctionCall {
         dbg.print(
-            "id {s} lexeme={s} args=.., statements=[] \n",
-            .{ variable.id, variable.token.lexeme },
+            "id {s} lexeme={s} args=..,  \n",
+            .{ func_call.id, func_call.token.lexeme },
             @src(),
         );
-        const instance = try allocator.create(Function);
-        instance.* = variable;
+        const instance = try allocator.create(FunctionCall);
+        instance.* = func_call;
         return instance;
     }
 };
 
-pub const Node = union(enum) {
-    num: *Num,
-    binop: *BinOp,
-    unaryop: *UnaryOp,
-    variable: *Variable,
-};
+pub const Node = union(enum) { num: *Num, binop: *BinOp, unaryop: *UnaryOp, variable: *Variable, func_call: *FunctionCall };

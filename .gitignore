@@ -179,3 +179,5 @@ cython_debug/
 # Zig
 zig/ajeanC*
 zig/.zig-cache
+zig/zig-out/*
+zig/zig-out/

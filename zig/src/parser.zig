@@ -14,7 +14,6 @@ pub const Parser = struct {
     tokens: []Token = undefined,
     tok_idx: usize = 0,
     allocator: std.mem.Allocator = undefined,
-    dummy: i64 = 0,
 
     pub fn init(tokens: []Token, allocator: std.mem.Allocator) !Self {
         const parser = Self{ .tokens = try allocator.alloc(Token, tokens.len), .allocator = allocator };
@@ -80,6 +79,44 @@ pub const Parser = struct {
         return try self.makeNode(Node{ .binop = try AstNodes.BinOp.make(AstNodes.BinOp{ .token = assign_token, .lhs = lhs, .rhs = rhs }, self.allocator) });
     }
 
+    pub fn parseCallArgs(self: *Self) anyerror!std.ArrayList(*Node) {
+        var token = self.current() orelse return Error.UnexpectedEndOfInput;
+        dbg.print("{} \"{s}\"\n", .{ token.type, token.lexeme }, @src());
+        var args = std.ArrayList(*Node).init(self.allocator);
+        while (token.type != TokenType.rparen) {
+            const expr = try self.parseExpr();
+            try args.append(expr);
+            token = self.current() orelse return Error.UnexpectedEndOfInput;
+            dbg.print("yo--------T O K E N={}\n", .{token.type}, @src());
+
+            if (token.type == TokenType.rparen) break;
+            try self.eat(TokenType.comma);
+        }
+        return args;
+    }
+    pub fn parseFuncCall(self: *Self) anyerror!*Node {
+        const token = self.current() orelse return Error.UnexpectedEndOfInput;
+        dbg.print("{} \"{s}\"\n", .{ token.type, token.lexeme }, @src());
+        try self.eat(TokenType.id);
+        try self.eat(TokenType.lparen);
+        const args = try self.parseCallArgs();
+        try self.eat(TokenType.rparen);
+
+        // Create FunctionCall first
+        const id = try self.allocator.dupe(u8, token.lexeme);
+        const func_call = try AstNodes.FunctionCall.make(AstNodes.FunctionCall{
+            .token = token,
+            .id = id,
+            .args = args,
+        }, self.allocator);
+
+        // Then create the Node separately
+        const node = try self.allocator.create(Node);
+        node.* = Node{ .func_call = func_call };
+
+        return node;
+    }
+
     pub fn parseFactor(self: *Self) anyerror!*Node {
         const token = self.current() orelse return Error.UnexpectedEndOfInput;
         dbg.print("{} \"{s}\"\n", .{ token.type, token.lexeme }, @src());
@@ -90,8 +127,7 @@ pub const Parser = struct {
             .id => node = {
                 const next_token = self.peek(1) orelse return Error.UnexpectedEndOfInput;
                 if (next_token.type == TokenType.lparen) {
-                    // TODO: parseFunctionCall()
-                    return NotImplemented;
+                    return try self.parseFuncCall();
                 } else {
                     return try self.parseVariable();
                 }
@@ -227,33 +263,32 @@ pub const Parser = struct {
         return statements;
     }
 
-    pub fn visit(self: *Self, node: *const Node) i64 {
-        switch (node.*) {
-            .num => |*num| {
-                std.debug.print("num {} \n", .{num.*.value});
-                return num.*.value;
-                // dbg.print("{}({})\n", .{ num.*.token.type, num.*.value }, @src());
-            },
-            .binop => |*binop| {
-                std.debug.print("binop {s} \n", .{binop.*.token.lexeme});
+    // pub fn visit(self: *Self, node: *const Node) i64 {
+    //     switch (node.*) {
+    //         .num => |*num| {
+    //             std.debug.print("num {} \n", .{num.*.value});
+    //             return num.*.value;
+    //             // dbg.print("{}({})\n", .{ num.*.token.type, num.*.value }, @src());
+    //         },
+    //         .binop => |*binop| {
+    //             std.debug.print("binop {s} \n", .{binop.*.token.lexeme});
 
-                // _ = binop;
-                dbg.print("left\t{*}\n", .{binop.*.lhs}, @src());
-                switch (binop.*.token.type) {
-                    TokenType.plus => {
-                        const l = self.visit(binop.*.lhs);
-                        const r = self.visit(binop.*.rhs);
-                        self.dummy += l + r; //FIXME: delete this
-                    },
-                    else => unreachable,
-                }
-                dbg.print("+\n", .{}, @src());
-                dbg.print("right\t{*}\n", .{binop.*.rhs}, @src());
-                // self.visit(binop.*.right);
-            },
-        }
-        return 0;
-    }
+    //             // _ = binop;
+    //             dbg.print("left\t{*}\n", .{binop.*.lhs}, @src());
+    //             switch (binop.*.token.type) {
+    //                 TokenType.plus => {
+    //                     const l = self.visit(binop.*.lhs);
+    //                     const r = self.visit(binop.*.rhs);
+    //                 },
+    //                 else => unreachable,
+    //             }
+    //             dbg.print("+\n", .{}, @src());
+    //             dbg.print("right\t{*}\n", .{binop.*.rhs}, @src());
+    //             // self.visit(binop.*.right);
+    //         },
+    //     }
+    //     return 0;
+    // }
 
     pub fn parse(self: *Self) !*Node {
         const root_node = self.parseExpr() catch |err| {
@@ -268,7 +303,6 @@ pub const Parser = struct {
         _ = root_node;
         dbg.print("\n", .{}, @src());
         // _ = self.visit(root_node);
-        dbg.print("{}", .{self.dummy}, @src());
 
         // Dummy return value for dev rn
         return try self.makeNode(Node{ .num = try AstNodes.Num.make(AstNodes.Num{ .token = Token{ .type = TokenType.integer, .lexeme = "42", .line = 0 }, .value = 42 }, self.allocator) });
@@ -303,6 +337,14 @@ fn destroyNode(node: ?*const Node) void {
             .variable => |variable| {
                 allocator.free(variable.id);
                 allocator.destroy(variable);
+            },
+            .func_call => |call| {
+                for (call.args.items) |expr| {
+                    destroyNode(expr);
+                }
+                allocator.free(call.id);
+                call.args.deinit();
+                allocator.destroy(call);
             },
         }
         allocator.destroy(n);
@@ -344,27 +386,34 @@ fn isVariable(node: *const Node) bool {
     };
 }
 
-// test "parseExpr - simple arithmetic" {
-//     var tokens = [_]Token{
-//         Token.init(TokenType.integer, "3", 1),
-//         Token.init(TokenType.plus, "+", 1),
-//         Token.init(TokenType.integer, "4", 1),
-//         Token.init(TokenType.semi, ";", 1),
-//     };
-//     var parser = try setupParserTest(&tokens);
-//     const ast = try parser.parseExpr();
-//     try std.testing.expect(isBinOp(ast));
-//     try std.testing.expectEqual(ast.binop.token.type, TokenType.plus);
+fn isFuncCall(node: *const Node) bool {
+    return switch (node.*) {
+        .func_call => true,
+        else => false,
+    };
+}
 
-//     try std.testing.expect(isNum(ast.binop.lhs));
-//     try std.testing.expectEqualStrings(ast.binop.lhs.*.num.token.lexeme, "3");
-//     try std.testing.expectEqual(ast.binop.lhs.*.num.value, 3);
+test "parseExpr - simple arithmetic" {
+    var tokens = [_]Token{
+        Token.init(TokenType.integer, "3", 1),
+        Token.init(TokenType.plus, "+", 1),
+        Token.init(TokenType.integer, "4", 1),
+        Token.init(TokenType.semi, ";", 1),
+    };
+    var parser = try setupParserTest(&tokens);
+    const ast = try parser.parseExpr();
+    try std.testing.expect(isBinOp(ast));
+    try std.testing.expectEqual(ast.binop.token.type, TokenType.plus);
 
-//     try std.testing.expect(isNum(ast.binop.rhs));
-//     try std.testing.expectEqual(ast.binop.rhs.*.num.value, 4);
+    try std.testing.expect(isNum(ast.binop.lhs));
+    try std.testing.expectEqualStrings(ast.binop.lhs.*.num.token.lexeme, "3");
+    try std.testing.expectEqual(ast.binop.lhs.*.num.value, 3);
 
-//     destroyParser(parser, ast);
-// }
+    try std.testing.expect(isNum(ast.binop.rhs));
+    try std.testing.expectEqual(ast.binop.rhs.*.num.value, 4);
+
+    destroyParser(parser, ast);
+}
 
 test "parseExpr - arithmetic, parentheses" {
     var tokens = [_]Token{
@@ -556,6 +605,56 @@ test "parseAssignment - arithmetic, variables, parentheses" {
     const num_3 = binop_plus.rhs.*.num;
     try std.testing.expectEqual(num_3.token.type, TokenType.integer);
     try std.testing.expectEqual(num_3.value, 3);
+
+    destroyParser(parser, ast);
+}
+
+test "parseExpr - function call - 1 arg" {
+    var tokens = [_]Token{
+        Token.init(TokenType.id, "a", 0),
+        Token.init(TokenType.lparen, "(", 0),
+        Token.init(TokenType.id, "b", 1),
+        Token.init(TokenType.rparen, ")", 1),
+    };
+    var parser = try setupParserTest(&tokens);
+    const ast = try parser.parseExpr();
+    try std.testing.expect(isFuncCall(ast));
+    try std.testing.expectEqualStrings(ast.func_call.id, "a");
+
+    try std.testing.expect(isVariable(ast.func_call.*.args.items[0]));
+    const expr_b = ast.func_call.*.args.items[0].*.variable;
+    try std.testing.expectEqual(expr_b.token.type, TokenType.id);
+    try std.testing.expectEqualStrings(expr_b.token.lexeme, "b");
+    try std.testing.expectEqualStrings(expr_b.id, "b");
+
+    destroyParser(parser, ast);
+}
+
+test "parseExpr - function call - 2 arg" {
+    var tokens = [_]Token{
+        Token.init(TokenType.id, "a", 0),
+        Token.init(TokenType.lparen, "(", 0),
+        Token.init(TokenType.id, "b", 1),
+        Token.init(TokenType.comma, ",", 1),
+        Token.init(TokenType.id, "c", 1),
+        Token.init(TokenType.rparen, ")", 1),
+    };
+    var parser = try setupParserTest(&tokens);
+    const ast = try parser.parseExpr();
+    try std.testing.expect(isFuncCall(ast));
+    try std.testing.expectEqualStrings(ast.func_call.id, "a");
+
+    try std.testing.expect(isVariable(ast.func_call.*.args.items[0]));
+    const expr_b = ast.func_call.*.args.items[0].*.variable;
+    try std.testing.expectEqual(expr_b.token.type, TokenType.id);
+    try std.testing.expectEqualStrings(expr_b.token.lexeme, "b");
+    try std.testing.expectEqualStrings(expr_b.id, "b");
+
+    try std.testing.expect(isVariable(ast.func_call.*.args.items[1]));
+    const expr_c = ast.func_call.*.args.items[1].*.variable;
+    try std.testing.expectEqual(expr_c.token.type, TokenType.id);
+    try std.testing.expectEqualStrings(expr_c.token.lexeme, "c");
+    try std.testing.expectEqualStrings(expr_c.id, "c");
 
     destroyParser(parser, ast);
 }
