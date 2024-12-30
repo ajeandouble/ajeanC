@@ -40,8 +40,7 @@ pub fn main() !u8 {
         dbg.print("Error tokenizing buffer {}\t", .{err}, @src());
         return 1;
     };
-
-    var parser = try Parser.init(lexer.tokens.?, allocator);
+    var parser = try Parser.init(lexer.tokens.?.items, allocator);
     const ast = try parser.parse();
     _ = ast;
     defer parser.deinit();

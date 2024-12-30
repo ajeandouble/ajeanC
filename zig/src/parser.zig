@@ -4,6 +4,7 @@ const Token = @import("./tokens.zig").Token;
 const TokenType = @import("./tokens.zig").TokenType;
 const AstNodes = @import("./ast_nodes.zig");
 const Node = AstNodes.Node;
+const res_kw = @import("./reserved_kws.zig");
 
 const NotImplemented = error{NotImplemented}.NotImplemented;
 
@@ -283,13 +284,13 @@ pub const Parser = struct {
 
     pub fn parseLocalStatements(self: *Self) anyerror!std.ArrayList(*Node) {
         var token = try self.current() orelse return Error.UnexpectedEndOfInput;
-        //dbg.print("{} \"{?}\"\n", .{ token.type, try token.getLexeme() }, @src());
+        dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
         var statements = std.ArrayList(*Node).init(self.arena.allocator());
         try statements.append((try self.parseStatement()));
         token = try self.current() orelse return Error.UnexpectedEndOfInput;
-        //dbg.print("{} \"{?}\"\n", .{ token.type, try token.getLexeme() }, @src());
+        dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
         while (token.type != TokenType.rbrace) {
-            //dbg.print("{} \"{?}\"\n", .{ token.type, try token.getLexeme() }, @src());
+            dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
             try statements.append(try self.parseStatement());
             token = try self.current() orelse return Error.UnexpectedEndOfInput;
         }
@@ -297,60 +298,50 @@ pub const Parser = struct {
     }
 
     pub fn parseCompoundStatement(self: *Self) anyerror!std.ArrayList(*Node) {
-        const token = try self.current();
-        if (token == null) {
-            return Error.UnexpectedEndOfInput;
-        }
-        dbg.print("{} \"{s}\"\n", .{ token.?.type, try token.?.getLexeme() }, @src());
+        const token = try self.current() orelse return Error.UnexpectedEndOfInput;
+        dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
         try self.eat(TokenType.lbrace);
         const statements = try self.parseLocalStatements();
         try self.eat(TokenType.rbrace);
         return statements;
     }
 
-    // pub fn visit(self: *Self, node: *const Node) i64 {
-    //     switch (node.*) {
-    //         .num => |*num| {
-    //             std.debug.print("num {} \n", .{num.*.value});
-    //             return num.*.value;
-    //             // //dbg.print("{}({})\n", .{ num.*.token.type, num.*.value }, @src());
-    //         },
-    //         .binop => |*binop| {
-    //             std.debug.print("binop {s} \n", .{binop.*.token.lexeme});
-
-    //             // _ = binop;
-    //             //dbg.print("left\t{*}\n", .{binop.*.lhs}, @src());
-    //             switch (binop.*.token.type) {
-    //                 TokenType.plus => {
-    //                     const l = self.visit(binop.*.lhs);
-    //                     const r = self.visit(binop.*.rhs);
-    //                 },
-    //                 else => unreachable,
-    //             }
-    //             //dbg.print("+\n", .{}, @src());
-    //             //dbg.print("right\t{*}\n", .{binop.*.rhs}, @src());
-    //             // self.visit(binop.*.right);
-    //         },
-    //     }
-    //     return 0;
-    // }
+    pub fn parseProgram(self: *Self) !*Node {
+        const token = try self.current() orelse return Error.UnexpectedEndOfInput;
+        dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
+        while (true) {
+            switch (token.type) {
+                TokenType.id => {
+                    const next_token = try self.peek(1);
+                    if (std.mem.eql(u8, next_token.lexeme.?, res_kw.reserved_function)) {
+                        return NotImplemented;
+                    } else {
+                        return try parseAssignment();
+                    }
+                },
+                else => {
+                    return Error.BadToken;
+                },
+            }
+        }
+    }
 
     pub fn parse(self: *Self) !*Node {
-        const root_node = self.parseExpr() catch |err| {
+        const root_node = self.parseProgram() catch |err| {
             switch (err) {
                 Error.BadToken => {
-                    //dbg.print("Bad Token: {}\n", .{(self.current() orelse return Error.ParsingError).type}, @src());
+                    dbg.print("Bad Token: {}\n", .{(try self.current() orelse return Error.ParsingError).type}, @src());
                     return Error.ParsingError;
                 },
                 else => {
-                    dbg.print("yo", .{}, @src());
+                    dbg.print("Error: {}\n", .{err}, @src());
                     return err;
                 },
             }
         };
-        _ = root_node;
-        //dbg.print("\n", .{}, @src());
 
+        // return
+        _ = root_node;
         // Dummy return value for dev rn
         return try self.makeNode(Node{ .num = try AstNodes.Num.make(AstNodes.Num{ .token = Token{ .type = TokenType.integer, .lexeme = "42", .line = 0, .allocator = self.arena.allocator() }, .value = 42 }, self.arena.allocator()) });
     }
@@ -365,11 +356,6 @@ fn setupParserTest(tokens: []Token) !Parser {
 }
 
 fn destroyParser(parser: *Parser) void {
-    // const allocator = std.testing.allocator;
-    // for (parser.tokens.items) |token| {
-    //     token.deinit();
-    // }
-    // allocator.free(parser.tokens);
     parser.deinit();
 }
 
@@ -435,18 +421,18 @@ test "parseExpr - simple arithmetic" {
 
 test "parseExpr - arithmetic, parentheses" {
     var tokens = [_]Token{
-        Token{ .type = TokenType.integer, .lexeme = "41", .line = 0 },
-        Token{ .type = TokenType.plus, .lexeme = "+", .line = 0 },
-        Token{ .type = TokenType.integer, .lexeme = "1", .line = 1 },
-        Token{ .type = TokenType.div, .lexeme = "/", .line = 1 },
-        Token{ .type = TokenType.lparen, .lexeme = "(", .line = 1 },
-        Token{ .type = TokenType.integer, .lexeme = "9", .line = 1 },
-        Token{ .type = TokenType.mul, .lexeme = "*", .line = 1 },
-        Token{ .type = TokenType.integer, .lexeme = "3", .line = 1 },
-        Token{ .type = TokenType.rparen, .lexeme = ")", .line = 1 },
+        Token{ .type = TokenType.integer, .lexeme = "41", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.plus, .lexeme = "+", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.integer, .lexeme = "1", .line = 1, .allocator = undefined },
+        Token{ .type = TokenType.div, .lexeme = "/", .line = 1, .allocator = undefined },
+        Token{ .type = TokenType.lparen, .lexeme = "(", .line = 1, .allocator = undefined },
+        Token{ .type = TokenType.integer, .lexeme = "9", .line = 1, .allocator = undefined },
+        Token{ .type = TokenType.mul, .lexeme = "*", .line = 1, .allocator = undefined },
+        Token{ .type = TokenType.integer, .lexeme = "3", .line = 1, .allocator = undefined },
+        Token{ .type = TokenType.rparen, .lexeme = ")", .line = 1, .allocator = undefined },
     };
     var parser = try setupParserTest(&tokens);
-    defer destroyParser(&parser);
+    defer parser.deinit();
     const ast = try parser.parseExpr();
     try std.testing.expect(isBinOp(ast));
     try std.testing.expectEqual(ast.binop.token.type, TokenType.plus);
@@ -467,12 +453,12 @@ test "parseExpr - arithmetic, parentheses" {
     try std.testing.expectEqual(node_binop_mul.token.type, TokenType.mul);
 
     const node_9 = node_binop_mul.lhs.*.num;
-    try std.testing.expectEqualStrings(node_9.token.lexeme, "9");
+    try std.testing.expectEqualStrings(node_9.token.lexeme.?, "9");
     try std.testing.expectEqual(node_9.token.type, TokenType.integer);
     try std.testing.expectEqual(node_9.value, 9);
 
     const node_3 = node_binop_mul.rhs.*.num;
-    try std.testing.expectEqualStrings(node_3.token.lexeme, "3");
+    try std.testing.expectEqualStrings(node_3.token.lexeme.?, "3");
     try std.testing.expectEqual(node_3.token.type, TokenType.integer);
     try std.testing.expectEqual(node_3.value, 3);
 }

@@ -2,18 +2,18 @@ const std = @import("std");
 const dbg = @import("./debug.zig");
 const Token = @import("./tokens.zig").Token;
 const TokenType = @import("./tokens.zig").TokenType;
-
+const res_kw = @import("./reserved_kws.zig");
 const Error = error{ NullSource, NullTokens, BadToken, OutOfBounds, UnterminatedString };
 
 const reserved_kws = std.StaticStringMap(TokenType).initComptime(.{
-    .{ "function", TokenType.function_kw },
-    .{ "return", TokenType.return_kw },
-    .{ "if", TokenType.if_kw },
-    .{ "else", TokenType.else_kw },
-    .{ "while", TokenType.while_kw },
-    .{ "for", TokenType.for_kw },
-    .{ "break", TokenType.break_kw },
-    .{ "continue", TokenType.continue_kw },
+    .{ res_kw.reserved_function, TokenType.function_kw },
+    .{ res_kw.reserved_return, TokenType.return_kw },
+    .{ res_kw.reserved_if, TokenType.if_kw },
+    .{ res_kw.reserved_else, TokenType.else_kw },
+    .{ res_kw.reserved_while, TokenType.while_kw },
+    .{ res_kw.reserved_for, TokenType.for_kw },
+    .{ res_kw.reserved_break, TokenType.break_kw },
+    .{ res_kw.reserved_continue, TokenType.continue_kw },
 });
 
 const single_chr_toks = std.StaticStringMap(TokenType).initComptime(.{
@@ -244,7 +244,7 @@ test "lexer reserved keywords" {
     // function
     const tok_0 = try tokens.items[0].getToken();
     const tok_0_lexeme = try tokens.items[0].getLexeme();
-    try std.testing.expect(std.mem.eql(u8, tok_0_lexeme, "function"));
+    try std.testing.expect(std.mem.eql(u8, tok_0_lexeme, res_kw.reserved_function));
     try std.testing.expect(tok_0.type == TokenType.function_kw);
     try std.testing.expect(tok_0.line == 0);
 
