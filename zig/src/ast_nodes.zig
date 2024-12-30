@@ -20,11 +20,11 @@ pub const BinOp = struct {
     rhs: *const Node = undefined,
 
     pub fn make(binop: BinOp, allocator: std.mem.Allocator) anyerror!*BinOp {
-        dbg.print(
-            "left {} right {} lexeme={s}\n",
-            .{ binop.lhs.*, binop.rhs.*, binop.token.lexeme },
-            @src(),
-        );
+        // dbg.print(
+        //     "left {} right {} lexeme={s}\n",
+        //     .{ binop.lhs.*, binop.rhs.*, binop.token.lexeme },
+        //     @src(),
+        // );
         const instance = try allocator.create(BinOp);
         instance.* = binop;
         return instance;
@@ -37,11 +37,11 @@ pub const UnaryOp = struct {
     value: *const Node = undefined,
 
     pub fn make(unaryop: Self, allocator: std.mem.Allocator) anyerror!*UnaryOp {
-        dbg.print(
-            "value {} lexeme={s}\n",
-            .{ unaryop.value.*, unaryop.token.lexeme },
-            @src(),
-        );
+        //dbg.print(
+        //     "value {} lexeme={s}\n",
+        //     .{ unaryop.value.*, unaryop.token.lexeme },
+        //     @src(),
+        // );
         const instance = try allocator.create(UnaryOp);
         instance.* = unaryop;
         return instance;
@@ -54,11 +54,11 @@ pub const Variable = struct {
     id: []const u8,
 
     pub fn make(variable: Self, allocator: std.mem.Allocator) anyerror!*Variable {
-        dbg.print(
-            "id {s} lexeme={s}\n",
-            .{ variable.id, variable.token.lexeme },
-            @src(),
-        );
+        //dbg.print(
+        //     "id {s} lexeme={s}\n",
+        //     .{ variable.id, variable.token.lexeme },
+        //     @src(),
+        // );
         const instance = try allocator.create(Variable);
         instance.* = variable;
         return instance;
@@ -72,11 +72,11 @@ pub const FunctionCall = struct {
     args: std.ArrayList(*Node),
 
     pub fn make(func_call: Self, allocator: std.mem.Allocator) anyerror!*FunctionCall {
-        dbg.print(
-            "id {s} lexeme={s} args=..,  \n",
-            .{ func_call.id, func_call.token.lexeme },
-            @src(),
-        );
+        //dbg.print(
+        //     "id {s} lexeme={s} args=..,  \n",
+        //     .{ func_call.id, func_call.token.lexeme },
+        //     @src(),
+        // );
         const instance = try allocator.create(FunctionCall);
         instance.* = func_call;
         return instance;

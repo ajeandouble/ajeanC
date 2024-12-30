@@ -3,7 +3,7 @@ const dbg = @import("./debug.zig");
 const Token = @import("./tokens.zig").Token;
 const TokenType = @import("./tokens.zig").TokenType;
 
-const Error = error{ BadToken, OutOfBounds, UnterminatedString };
+const Error = error{ NullSource, NullTokens, BadToken, OutOfBounds, UnterminatedString };
 
 const reserved_kws = std.StaticStringMap(TokenType).initComptime(.{
     .{ "function", TokenType.function_kw },
@@ -51,34 +51,50 @@ const whitespaces_no_nl = std.StaticStringMap(undefined).initComptime(.{
 pub const Lexer: type = struct {
     const Self = @This();
     allocator: std.mem.Allocator = undefined,
-    source: []u8 = undefined,
+    source: ?([]const u8) = undefined,
     pos: usize = 0,
     line: usize = 0,
+    tokens: ?std.ArrayList(Token),
 
-    // TODO: pass allocator
     pub fn init(buffer: []const u8, allocator: std.mem.Allocator) !Self {
-        const lexer = Self{
-            .allocator = allocator,
-            .source = try allocator.alloc(u8, buffer.len),
-        };
-        @memcpy(lexer.source, buffer);
+        const lexer = Self{ .allocator = allocator, .source = buffer, .tokens = std.ArrayList(Token).init(allocator) };
         return lexer;
     }
 
-    pub fn nextToken(self: *Self) !Token {
+    pub fn deinit(self: *Self) void {
+        for (self.tokens.?.items) |*tok| {
+            tok.deinit();
+            tok.lexeme = null;
+        }
+        self.tokens.?.deinit();
+        self.tokens = null;
+    }
+
+    pub fn tokenize(self: *Self) !void {
+        if (self.tokens) |*tokens| {
+            var next_tok = try self.nextToken();
+            try tokens.append(next_tok);
+            while (next_tok.type != TokenType.eof) {
+                dbg.print("{}: '{s}' L:{}\n", .{ next_tok.type, next_tok.lexeme.?, next_tok.line }, @src());
+                next_tok = try self.nextToken();
+                try tokens.*.append(next_tok);
+            }
+        } else {
+            return Error.NullTokens;
+        }
+    }
+
+    pub fn getTokens(self: *const Self) !std.ArrayList(Token) {
+        return self.tokens orelse Error.NullTokens;
+    }
+
+    fn nextToken(self: *Self) !Token {
         self.skipWhitespace() catch {
-            const lexeme = try self.allocator.dupe(u8, "");
-            return Token{ .type = TokenType.eof, .lexeme = lexeme, .line = self.line };
+            return Token.init(TokenType.eof, "", self.line, self.allocator);
         };
 
         if (self.isAtEnd()) {
-            const lexeme = try self.allocator.dupe(u8, "");
-
-            return Token{
-                .type = TokenType.eof,
-                .lexeme = lexeme,
-                .line = self.line,
-            };
+            return Token.init(TokenType.eof, "", self.line, self.allocator);
         }
 
         for (reserved_kws.keys()) |kw| {
@@ -89,17 +105,15 @@ pub const Lexer: type = struct {
                 }
                 try self.advance(kw.len);
                 const tokType = reserved_kws.get(kw) orelse unreachable;
-                const lexeme = try self.allocator.dupe(u8, kw);
-                return Token{ .type = tokType, .lexeme = lexeme, .line = self.line };
+                return Token.init(tokType, kw, self.line, self.allocator);
             }
         }
 
         for (mult_chr_toks.keys()) |kw| {
             if (std.mem.eql(u8, self.lookAhead(kw.len), kw)) {
-                const tokType = mult_chr_toks.get(kw) orelse unreachable;
                 try self.advance(kw.len);
-                const lexeme = try self.allocator.dupe(u8, kw);
-                return Token{ .type = tokType, .lexeme = lexeme, .line = self.line };
+                const tokType = mult_chr_toks.get(kw) orelse unreachable;
+                return Token.init(tokType, kw, self.line, self.allocator);
             }
         }
 
@@ -110,10 +124,9 @@ pub const Lexer: type = struct {
         for (single_chr_toks.keys()) |kw| {
             const single_chr = kw[0];
             if (self.peek(0) == single_chr) {
-                const tokType = single_chr_toks.get(kw) orelse unreachable;
                 try self.advance(1);
-                const lexeme = try self.allocator.dupe(u8, kw);
-                return Token{ .type = tokType, .lexeme = lexeme, .line = self.line };
+                const tokType = single_chr_toks.get(kw) orelse unreachable;
+                return Token.init(tokType, kw, self.line, self.allocator);
             }
         }
 
@@ -129,17 +142,18 @@ pub const Lexer: type = struct {
         return Error.BadToken;
     }
 
+    // Helper functions
     fn string(self: *Self) !Token {
         const start = self.pos;
         try self.advance(1);
         while (self.peek(0) != '"' and self.peek(0) != 0x00) {
             try self.advance(1);
         }
-        if (self.pos == self.source.len) {
+        if (self.pos == self.source.?.len) {
             return Error.UnterminatedString;
         }
         try self.advance(1);
-        return Token{ .type = TokenType.string, .lexeme = try self.allocator.dupe(u8, self.source[start..self.pos]), .line = self.line };
+        return Token.init(TokenType.string, self.source.?[start..self.pos], self.line, self.allocator);
     }
 
     fn num(self: *Self) !Token {
@@ -150,7 +164,7 @@ pub const Lexer: type = struct {
             n += @intCast(self.peek(0));
             try self.advance(1);
         }
-        return Token{ .type = TokenType.integer, .lexeme = try self.allocator.dupe(u8, self.source[start..self.pos]), .line = self.line };
+        return Token.init(TokenType.integer, self.source.?[start..self.pos], self.line, self.allocator);
     }
 
     fn id(self: *Self) !Token {
@@ -158,25 +172,25 @@ pub const Lexer: type = struct {
         while (std.ascii.isAlphanumeric(self.peek(0))) {
             try self.advance(1);
         }
-        return Token{ .type = TokenType.id, .lexeme = try self.allocator.dupe(u8, self.source[start..self.pos]), .line = self.line };
+        return Token.init(TokenType.id, self.source.?[start..self.pos], self.line, self.allocator);
     }
 
     // Utils functions
     inline fn peek(self: *const Self, offset: ?usize) u8 {
         const offs = offset orelse 0;
-        return if (self.pos + offs < self.source.len) self.source[self.pos + offs] else 0x00;
+        return if (self.pos + offs < self.source.?.len) self.source.?[self.pos + offs] else 0x00;
     }
 
-    inline fn lookAhead(self: *const Self, len: usize) []u8 {
-        if (self.pos + len >= self.source.len) {
+    inline fn lookAhead(self: *const Self, len: usize) []const u8 {
+        if (self.pos + len >= self.source.?.len) {
             return "";
         }
-        return self.source[self.pos .. self.pos + len];
+        return self.source.?[self.pos .. self.pos + len];
     }
 
     inline fn advance(self: *Self, offset: ?usize) !void {
         const offs = offset orelse 1;
-        if (self.pos + offs <= self.source.len) {
+        if (self.pos + offs <= self.source.?.len) {
             self.pos += offs;
         } else {
             return Error.OutOfBounds;
@@ -184,7 +198,7 @@ pub const Lexer: type = struct {
     }
 
     inline fn isAtEnd(self: *const Self) bool {
-        return self.pos >= self.source.len;
+        return self.pos >= (self.source orelse unreachable).len;
     }
 
     fn skipWhitespace(self: *Self) Error!void {
@@ -206,83 +220,90 @@ pub const Lexer: type = struct {
 // Testing
 const expect = std.testing.expect;
 
-const SetupRet = std.meta.Tuple(&.{ std.ArrayList(Token), Lexer });
-
-fn setupLextStringTest(s: []const u8) !SetupRet {
+fn setupLextStringTest(s: []const u8) anyerror!Lexer {
     const allocator = std.testing.allocator;
     var lexer = try Lexer.init(s, allocator);
-
-    var tokens = std.ArrayList(Token).init(allocator);
-    errdefer tokens.deinit();
-    var nextToken = try lexer.nextToken();
-    try tokens.append(nextToken);
-    while (nextToken.type != TokenType.eof) {
-        nextToken = try lexer.nextToken();
-        try tokens.append(nextToken);
-    }
-    return .{ tokens, lexer };
+    try lexer.tokenize();
+    return lexer;
 }
 
-fn teardownLexStringTest(tokens: std.ArrayList(Token), lexer: Lexer) void {
-    for (tokens.items) |tok| {
-        lexer.allocator.free(tok.lexeme);
-    }
-    tokens.deinit();
-    std.testing.allocator.free(lexer.source);
+fn teardownLexStringTest(lexer: *Lexer) void {
+    lexer.deinit();
+}
+
+test "lexer init and cleanup" {
+    var lexer = try setupLextStringTest("function return if else while for break continue ");
+    try lexer.tokenize();
+    teardownLexStringTest(&lexer);
 }
 
 test "lexer reserved keywords" {
-    const ret = try setupLextStringTest("function return if else while for break continue ");
-    const tokens = ret[0];
-    const lexer = ret[1];
-
+    var lexer = try setupLextStringTest("function return if else while for break continue ");
+    try lexer.tokenize();
+    const tokens = try lexer.getTokens();
     // function
-    try std.testing.expect(std.mem.eql(u8, tokens.items[0].lexeme, "function"));
-    try std.testing.expect(tokens.items[0].type == TokenType.function_kw);
-    try std.testing.expect(tokens.items[0].line == 0);
+    const tok_0 = try tokens.items[0].getToken();
+    const tok_0_lexeme = try tokens.items[0].getLexeme();
+    try std.testing.expect(std.mem.eql(u8, tok_0_lexeme, "function"));
+    try std.testing.expect(tok_0.type == TokenType.function_kw);
+    try std.testing.expect(tok_0.line == 0);
 
     // return
-    try std.testing.expect(std.mem.eql(u8, tokens.items[1].lexeme, "return"));
-    try std.testing.expect(tokens.items[1].type == TokenType.return_kw);
-    try std.testing.expect(tokens.items[1].line == 0);
+    const tok_1 = try tokens.items[1].getToken();
+    const tok_1_lexeme = try tok_1.getLexeme();
+    try std.testing.expect(std.mem.eql(u8, tok_1_lexeme, "return"));
+    try std.testing.expect(tok_1.type == TokenType.return_kw);
+    try std.testing.expect(tok_1.line == 0);
 
     // if
-    try std.testing.expect(std.mem.eql(u8, tokens.items[2].lexeme, "if"));
-    try std.testing.expect(tokens.items[2].type == TokenType.if_kw);
-    try std.testing.expect(tokens.items[2].line == 0);
+    const tok_2 = try tokens.items[2].getToken();
+    const tok_2_lexeme = try tok_2.getLexeme();
+    try std.testing.expect(std.mem.eql(u8, tok_2_lexeme, "if"));
+    try std.testing.expect(tok_2.type == TokenType.if_kw);
+    try std.testing.expect(tok_2.line == 0);
 
-    // else
-    try std.testing.expect(std.mem.eql(u8, tokens.items[3].lexeme, "else"));
-    try std.testing.expect(tokens.items[3].type == TokenType.else_kw);
-    try std.testing.expect(tokens.items[3].line == 0);
+    // // else
+    const tok_3 = try tokens.items[3].getToken();
+    const tok_3_lexeme = try tok_3.getLexeme();
+    try std.testing.expect(std.mem.eql(u8, tok_3_lexeme, "else"));
+    try std.testing.expect(tok_3.type == TokenType.else_kw);
+    try std.testing.expect(tok_3.line == 0);
 
     // while
-    try std.testing.expect(std.mem.eql(u8, tokens.items[4].lexeme, "while"));
-    try std.testing.expect(tokens.items[4].type == TokenType.while_kw);
-    try std.testing.expect(tokens.items[4].line == 0);
+    const tok_4 = try tokens.items[4].getToken();
+    const tok_4_lexeme = try tok_4.getLexeme();
+    try std.testing.expect(std.mem.eql(u8, tok_4_lexeme, "while"));
+    try std.testing.expect(tok_4.type == TokenType.while_kw);
+    try std.testing.expect(tok_4.line == 0);
 
     // for
-    try std.testing.expect(std.mem.eql(u8, tokens.items[5].lexeme, "for"));
-    try std.testing.expect(tokens.items[5].type == TokenType.for_kw);
-    try std.testing.expect(tokens.items[5].line == 0);
+    const tok_5 = try tokens.items[5].getToken();
+    const tok_5_lexeme = try tok_5.getLexeme();
+    try std.testing.expect(std.mem.eql(u8, tok_5_lexeme, "for"));
+    try std.testing.expect(tok_5.type == TokenType.for_kw);
+    try std.testing.expect(tok_5.line == 0);
 
     // break
-    try std.testing.expect(std.mem.eql(u8, tokens.items[6].lexeme, "break"));
-    try std.testing.expect(tokens.items[6].type == TokenType.break_kw);
-    try std.testing.expect(tokens.items[6].line == 0);
+    const tok_6 = try tokens.items[6].getToken();
+    const tok_6_lexeme = try tok_6.getLexeme();
+    try std.testing.expect(std.mem.eql(u8, tok_6_lexeme, "break"));
+    try std.testing.expect(tok_6.type == TokenType.break_kw);
+    try std.testing.expect(tok_6.line == 0);
 
     // continue
-    try std.testing.expect(std.mem.eql(u8, tokens.items[7].lexeme, "continue"));
-    try std.testing.expect(tokens.items[7].type == TokenType.continue_kw);
-    try std.testing.expect(tokens.items[7].line == 0);
+    const tok_7 = try tokens.items[7].getToken();
+    const tok_7_lexeme = try tok_7.getLexeme();
+    try std.testing.expect(std.mem.eql(u8, tok_7_lexeme, "continue"));
+    try std.testing.expect(tok_7.type == TokenType.continue_kw);
+    try std.testing.expect(tok_7.line == 0);
 
-    teardownLexStringTest(tokens, lexer);
+    teardownLexStringTest(&lexer);
 }
 
 test "lexer operators - assignments and math" {
-    const ret = try setupLextStringTest("= + - * / % ");
-    const tokens = ret[0];
-    const lexer = ret[1];
+    var lexer = try setupLextStringTest("= + - * / % ");
+    try lexer.tokenize();
+    const tokens = try lexer.getTokens();
 
     try std.testing.expect(tokens.items[0].type == TokenType.assign);
     try std.testing.expect(tokens.items[1].type == TokenType.plus);
@@ -291,13 +312,13 @@ test "lexer operators - assignments and math" {
     try std.testing.expect(tokens.items[4].type == TokenType.div);
     try std.testing.expect(tokens.items[5].type == TokenType.mod);
 
-    teardownLexStringTest(tokens, lexer);
+    teardownLexStringTest(&lexer);
 }
 
 test "lexer delimiters" {
-    const ret = try setupLextStringTest("( ) { } [ ] , ;");
-    const tokens = ret[0];
-    const lexer = ret[1];
+    var lexer = try setupLextStringTest("( )\n{}\n[] ,;");
+    try lexer.tokenize();
+    const tokens = try lexer.getTokens();
 
     try std.testing.expect(tokens.items[0].type == TokenType.lparen);
     try std.testing.expect(tokens.items[1].type == TokenType.rparen);
@@ -308,60 +329,68 @@ test "lexer delimiters" {
     try std.testing.expect(tokens.items[6].type == TokenType.comma);
     try std.testing.expect(tokens.items[7].type == TokenType.semi);
 
-    teardownLexStringTest(tokens, lexer);
+    teardownLexStringTest(&lexer);
 }
 
 test "lexer comparisons" {
-    const ret = try setupLextStringTest("<= < == >= >");
-    const tokens = ret[0];
-    const lexer = ret[1];
+    var lexer = try setupLextStringTest("< <= == >= >");
+    try lexer.tokenize();
+    const tokens = try lexer.getTokens();
 
-    try std.testing.expect(tokens.items[0].type == TokenType.le);
-    try std.testing.expect(tokens.items[1].type == TokenType.lt);
+    try std.testing.expect(tokens.items[0].type == TokenType.lt);
+    try std.testing.expect(tokens.items[1].type == TokenType.le);
     try std.testing.expect(tokens.items[2].type == TokenType.eq);
     try std.testing.expect(tokens.items[3].type == TokenType.ge);
     try std.testing.expect(tokens.items[4].type == TokenType.gt);
 
-    teardownLexStringTest(tokens, lexer);
+    teardownLexStringTest(&lexer);
 }
 
 test "lexer values" {
-    const ret = try setupLextStringTest("\"hello\" 42 myVariable");
-    const tokens = ret[0];
-    const lexer = ret[1];
+    var lexer = try setupLextStringTest("\"hello\" 42 myVariable");
+    try lexer.tokenize();
+    const tokens = try lexer.getTokens();
 
     // String token
-    try std.testing.expect(tokens.items[0].type == TokenType.string);
-    try std.testing.expectEqualStrings(tokens.items[0].lexeme, "\"hello\"");
+    const tok_str = try tokens.items[0].getToken();
+    const tok_str_lexeme = try tok_str.getLexeme();
+    try std.testing.expect(tok_str.type == TokenType.string);
+    try std.testing.expectEqualStrings(tok_str_lexeme, "\"hello\"");
 
     // Integer token
-    try std.testing.expect(tokens.items[1].type == TokenType.integer);
-    try std.testing.expect(std.mem.eql(u8, tokens.items[1].lexeme, "42"));
+    const tok_int = try tokens.items[1].getToken();
+    const tok_int_lexeme = try tok_int.getLexeme();
+    try std.testing.expect(tok_int.type == TokenType.integer);
+    try std.testing.expect(std.mem.eql(u8, tok_int_lexeme, "42"));
 
     // Identifier token
-    try std.testing.expect(tokens.items[2].type == TokenType.id);
-    try std.testing.expect(std.mem.eql(u8, tokens.items[2].lexeme, "myVariable"));
+    const tok_id = try tokens.items[2].getToken();
+    const tok_id_lexeme = try tok_id.getLexeme();
+    try std.testing.expect(tok_id.type == TokenType.id);
+    try std.testing.expect(std.mem.eql(u8, tok_id_lexeme, "myVariable"));
 
-    teardownLexStringTest(tokens, lexer);
+    teardownLexStringTest(&lexer);
 }
 
 test "lexer line counting" {
-    const ret = try setupLextStringTest("a\nb\nc\n");
-    const tokens = ret[0];
-    const lexer = ret[1];
+    var lexer = try setupLextStringTest("0\n1\n2\n3");
+    try lexer.tokenize();
+    defer teardownLexStringTest(&lexer);
+
+    const tokens = try lexer.getTokens();
 
     try std.testing.expect(tokens.items[0].line == 0);
     try std.testing.expect(tokens.items[1].line == 1);
     try std.testing.expect(tokens.items[2].line == 2);
     try std.testing.expect(tokens.items[3].line == 3);
-
-    teardownLexStringTest(tokens, lexer);
 }
 
 test "lexer mixed expression" {
-    const ret = try setupLextStringTest("function add(a, b) { return a + b; }");
-    const tokens = ret[0];
-    const lexer = ret[1];
+    var lexer = try setupLextStringTest("function foobar(foo, bar) { return foo + bar; }");
+    try lexer.tokenize();
+    defer teardownLexStringTest(&lexer);
+
+    const tokens = try lexer.getTokens();
 
     try std.testing.expect(tokens.items[0].type == TokenType.function_kw);
     try std.testing.expect(tokens.items[1].type == TokenType.id);
@@ -377,18 +406,18 @@ test "lexer mixed expression" {
     try std.testing.expect(tokens.items[11].type == TokenType.id);
     try std.testing.expect(tokens.items[12].type == TokenType.semi);
     try std.testing.expect(tokens.items[13].type == TokenType.rbrace);
-
-    teardownLexStringTest(tokens, lexer);
 }
 
 test "lexer error cases" {
-    // Test invalid character
     const allocator = std.testing.allocator;
+
+    // Test invalid character
     var lexer_invalid_1 = try Lexer.init("@", allocator);
-    defer allocator.free(lexer_invalid_1.source);
+    errdefer allocator.free(lexer_invalid_1.source.?);
     try std.testing.expectError(Error.BadToken, lexer_invalid_1.nextToken());
 
+    // Test unterminated string
     var lexer_invalid_2 = try Lexer.init("\"hello", allocator);
-    defer allocator.free(lexer_invalid_2.source);
+    errdefer allocator.free(lexer_invalid_2.source.?);
     try std.testing.expectError(Error.UnterminatedString, lexer_invalid_2.nextToken());
 }
