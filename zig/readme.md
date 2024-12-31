@@ -44,3 +44,15 @@ variable: ID
 ## TODO
 
 Almost everything
+
+- [.] Parser
+  - [.] Parse function declarations in global scope
+  - [ ] Parse control flow
+    - [ ] Parse if block
+      - [ ] Parse else block
+    - [ ] Parse while block
+- [ ] Interpreter
+  - [ ] Expressions
+  - [ ] Function calls
+  - [ ] Control flow
+  - [ ] Global statements

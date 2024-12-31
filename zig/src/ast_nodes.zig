@@ -87,6 +87,9 @@ pub const FunctionCall = struct {
 
 pub const FunctionDecl = struct {
     const Self = @This();
+    token: Token = undefined,
+    id: []const u8,
+    args: std.ArrayList(*Node),
     statements: std.ArrayList(*Node),
 
     pub fn make(func_decl: Self, allocator: std.mem.Allocator) anyerror!*Self {
@@ -101,4 +104,24 @@ pub const FunctionDecl = struct {
     }
 };
 
-pub const Node = union(enum) { num: *Num, binop: *BinOp, unaryop: *UnaryOp, variable: *Variable, func_call: *FunctionCall };
+pub const Program = struct {
+    const Self = @This();
+    id: []const u8,
+    global_statements: std.ArrayList(*Node),
+    functions: std.ArrayList(*FunctionDecl),
+
+    pub fn make(program: Self, allocator: std.mem.Allocator) anyerror!*Self {
+        dbg.print(
+            "id {s} statements=..,  \n",
+            .{
+                program.id,
+            },
+            @src(),
+        );
+        const instance = try allocator.create(Self);
+        instance.* = program;
+        return instance;
+    }
+};
+
+pub const Node = union(enum) { num: *Num, binop: *BinOp, unaryop: *UnaryOp, variable: *Variable, func_call: *FunctionCall, func_decl: *FunctionDecl, program: *Program };
