@@ -1,34 +1,36 @@
 const std = @import("std");
-const Node = @import("./ast_nodes.zig");
+const dbg = @import("./debug.zig");
+const AstNode = @import("./ast_nodes.zig");
+const Node = @import("./ast_nodes.zig").Node;
 
-pub const Parser = struct {
+const Error = error{InterpretError};
+
+pub const Interpreter = struct {
     const Self = @This();
-    ast: *Node = undefined,
+    arena: std.heap.ArenaAllocator,
+    ast: *const AstNode.Program = undefined,
+
+    pub fn init(ast: *AstNode.Program, allocator: std.mem.Allocator) !Self {
+        const arena = std.heap.ArenaAllocator.init(allocator);
+        return Self{
+            .ast = ast,
+            .arena = arena,
+        };
+    }
+
+    pub fn interpret(self: *const Self) !u8 {
+        const functions = self.ast.functions;
+        for (functions.items) |func| {
+            switch (func.*) {
+                .func_decl => {
+                    dbg.print("---{s}\n", .{func.func_decl.*.id}, @src());
+                },
+                else => return Error.InterpretError,
+            }
+        }
+        dbg.print("global_len: {} ---\n", .{self.ast.global_statements.items.len}, @src());
+        dbg.print("funcs_len: {} ---\n", .{self.ast.functions.items.len}, @src());
+        // TODO: implement program return value
+        return 0;
+    }
 };
-
-// pub fn visit(self: *Self, node: *const Node) i64 {
-//     switch (node.*) {
-//         .num => |*num| {
-//             std.debug.print("num {} \n", .{num.*.value});
-//             return num.*.value;
-//             // //dbg.print("{}({})\n", .{ num.*.token.type, num.*.value }, @src());
-//         },
-//         .binop => |*binop| {
-//             std.debug.print("binop {s} \n", .{binop.*.token.lexeme});
-
-//             // _ = binop;
-//             //dbg.print("left\t{*}\n", .{binop.*.lhs}, @src());
-//             switch (binop.*.token.type) {
-//                 TokenType.plus => {
-//                     const l = self.visit(binop.*.lhs);
-//                     const r = self.visit(binop.*.rhs);
-//                 },
-//                 else => unreachable,
-//             }
-//             //dbg.print("+\n", .{}, @src());
-//             //dbg.print("right\t{*}\n", .{binop.*.rhs}, @src());
-//             // self.visit(binop.*.right);
-//         },
-//     }
-//     return 0;
-// }

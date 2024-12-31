@@ -108,7 +108,7 @@ pub const Program = struct {
     const Self = @This();
     id: []const u8,
     global_statements: std.ArrayList(*Node),
-    functions: std.ArrayList(*FunctionDecl),
+    functions: std.ArrayList(*Node),
 
     pub fn make(program: Self, allocator: std.mem.Allocator) anyerror!*Self {
         dbg.print(

@@ -4,13 +4,9 @@ const Lexer = @import("lexer.zig").Lexer;
 const Token = @import("tokens.zig").Token;
 const TokenType = @import("tokens.zig").TokenType;
 const Parser = @import("./parser.zig").Parser;
+const Interpreter = @import("./interpreter.zig").Interpreter;
 
 const MAX_STDIN_SIZE = 4096;
-
-// fn parseTokens(tokens: std.ArrayList(Token), allocator: std.mem.Allocator) !void {
-//     var parser = try Parser.init(tokens.items, allocator);
-//     _ = try parser.parse();
-// }
 
 fn parseArgs(args: [][:0]u8) void {
     for (args) |arg| {
@@ -42,13 +38,9 @@ pub fn main() !u8 {
     };
     var parser = try Parser.init(lexer.tokens.?.items, allocator);
     const ast = try parser.parse();
-    _ = ast;
     defer parser.deinit();
-    // _ = try parser.parse();
-    // try parseTokens(tokens, allocator);
-    // tokens.deinit();
 
-    // try parseTokens(
-
-    return 0;
+    const interpreter = try Interpreter.init(ast, allocator);
+    const ret = try interpreter.interpret();
+    return ret;
 }
