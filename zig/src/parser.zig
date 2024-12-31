@@ -147,6 +147,7 @@ pub const Parser = struct {
         }
         return args;
     }
+
     pub fn parseFuncCall(self: *Self) anyerror!*Node {
         const token = try self.current() orelse return Error.UnexpectedEndOfInput;
         dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
@@ -263,7 +264,7 @@ pub const Parser = struct {
 
     pub fn parseStatement(self: *Self) anyerror!*Node {
         const token = try self.current() orelse return Error.UnexpectedEndOfInput;
-        //dbg.print("{} \"{?}\"\n", .{ token.type, try token.getLexeme() }, @src());
+        dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
         switch (token.type) {
             .integer, .lparen, .rparen, .plus, .minus => {
                 const expr = try self.parseExpr();
@@ -273,9 +274,6 @@ pub const Parser = struct {
             .id => {
                 const next_token = try self.peek(1) orelse return Error.UnexpectedEndOfInput;
                 switch (next_token.type) {
-                    .lparen => {
-                        return NotImplemented;
-                    },
                     .assign => {
                         const assignment = try self.parseAssignment();
                         try self.eat(TokenType.semi);
@@ -300,8 +298,6 @@ pub const Parser = struct {
         var token = try self.current() orelse return Error.UnexpectedEndOfInput;
         dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
         var statements = std.ArrayList(*Node).init(self.arena.allocator());
-        try statements.append((try self.parseStatement()));
-        token = try self.current() orelse return Error.UnexpectedEndOfInput;
         dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
         while (token.type != TokenType.rbrace) {
             dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
@@ -326,11 +322,12 @@ pub const Parser = struct {
         var args = std.ArrayList(*Node).init(self.arena.allocator());
         while (token.type != TokenType.rparen) {
             const expr = try self.parseVariable();
-            dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
             try args.append(expr);
             token = try self.current() orelse return Error.UnexpectedEndOfInput;
+            dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
             if (token.type == TokenType.rparen) break;
             try self.eat(TokenType.comma);
+            dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
         }
         return args;
     }
@@ -342,7 +339,10 @@ pub const Parser = struct {
         try self.eat(TokenType.function_kw);
         token = try self.current() orelse return Error.UnexpectedEndOfInput;
         const func_id = token.lexeme.?;
+        try self.eat(TokenType.id);
+        try self.eat(TokenType.lparen);
         const args = try self.parseDeclArgs();
+        try self.eat(TokenType.rparen);
         const body = try self.parseCompoundStatement();
         return self.makeNode(Node{ .func_decl = try AstNodes.FunctionDecl.make(AstNodes.FunctionDecl{ .id = func_id, .token = token, .statements = body, .args = args }, self.arena.allocator()) });
     }
@@ -357,7 +357,6 @@ pub const Parser = struct {
             dbg.print("{}\n", .{token.type}, @src());
             switch (token.type) {
                 TokenType.id => {
-                    dbg.print("wtf", .{}, @src());
                     try global_statements.append(try self.parseAssignment());
                     try self.eat(TokenType.semi);
                 },
