@@ -3,6 +3,7 @@ const dbg = @import("./debug.zig");
 const AstNode = @import("./ast_nodes.zig");
 const Node = @import("./ast_nodes.zig").Node;
 const BinOp = @import("./ast_nodes.zig").BinOp;
+const UnaryOp = @import("./ast_nodes.zig").UnaryOp;
 const Num = @import("./ast_nodes.zig").Num;
 const TokenType = @import("./tokens.zig").TokenType;
 const activeTag = std.meta.activeTag;
@@ -38,7 +39,10 @@ pub const Interpreter = struct {
             .program => return NotImplented,
             .num => return Result{ .integer = .{ .val = self.visitInteger(node.*.num) } },
             .binop => return try self.visitBinOp(node.*.binop),
-            else => return NotImplented,
+            .unaryop => return try self.visitUnaryOp(node.*.unaryop),
+            else => {
+                return NotImplented;
+            },
         }
     }
 
@@ -73,8 +77,24 @@ pub const Interpreter = struct {
             .integer => {
                 return Result{ .integer = .{ .val = try self.computerIntBinOp(binop, lhs_result, rhs_result) } };
             },
-            else => return NotImplented,
+            else => return NotImplented, // NOTE: e.g. concat strings
         }
+    }
+
+    fn visitUnaryOp(self: *Self, unaryop: *const UnaryOp) !Result {
+        dbg.print("{s}\n", .{unaryop.token.lexeme.?}, @src());
+        var value_result = try self.visit(unaryop.value);
+        const value_res_tag = activeTag(value_result);
+
+        switch (value_res_tag) {
+            .integer => {
+                if (unaryop.token.type == TokenType.minus) {
+                    value_result.integer.val = -value_result.integer.val;
+                }
+            },
+            else => return NotImplented, // NOTE: e.g. concat strings
+        }
+        return value_result;
     }
 
     pub fn interpret(self: *Self) !u8 {
