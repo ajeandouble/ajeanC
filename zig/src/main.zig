@@ -31,6 +31,7 @@ pub fn main() !u8 {
     var lexer = Lexer.init(input_stdin, allocator) catch |err| {
         dbg.print("Error tokenizing buffer {}", .{err}, @src());
     };
+    defer lexer.deinit();
     // defer lexer.deinit();
     lexer.tokenize() catch |err| {
         dbg.print("Error tokenizing buffer {}\t", .{err}, @src());
@@ -40,7 +41,7 @@ pub fn main() !u8 {
     const ast = try parser.parse();
     defer parser.deinit();
 
-    const interpreter = try Interpreter.init(ast, allocator);
+    var interpreter = try Interpreter.init(ast, allocator);
     const ret = try interpreter.interpret();
     return ret;
 }

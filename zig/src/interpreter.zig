@@ -2,8 +2,9 @@ const std = @import("std");
 const dbg = @import("./debug.zig");
 const AstNode = @import("./ast_nodes.zig");
 const Node = @import("./ast_nodes.zig").Node;
+const Hashset = @import("./hashset.zig").HashSet;
 
-const Error = error{InterpretError};
+const Error = error{ InterpretError, DuplicateFunctionDeclaration, MissingMainFunctionDeclaration };
 
 pub const Interpreter = struct {
     const Self = @This();
@@ -18,15 +19,24 @@ pub const Interpreter = struct {
         };
     }
 
-    pub fn interpret(self: *const Self) !u8 {
+    pub fn interpret(self: *Self) !u8 {
         const functions = self.ast.functions;
+        var func_ids_hashset = std.StringHashMap(void).init(self.arena.allocator());
         for (functions.items) |func| {
             switch (func.*) {
                 .func_decl => {
-                    dbg.print("---{s}\n", .{func.func_decl.*.id}, @src());
+                    const id = func.func_decl.*.id;
+                    dbg.print("Function id={s}\n", .{id}, @src());
+                    if (func_ids_hashset.contains(id)) {
+                        return Error.DuplicateFunctionDeclaration;
+                    }
+                    try func_ids_hashset.put(id, {});
                 },
                 else => return Error.InterpretError,
             }
+        }
+        if (!func_ids_hashset.contains("main")) {
+            return Error.MissingMainFunctionDeclaration;
         }
         dbg.print("global_len: {} ---\n", .{self.ast.global_statements.items.len}, @src());
         dbg.print("funcs_len: {} ---\n", .{self.ast.functions.items.len}, @src());

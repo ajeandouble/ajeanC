@@ -310,7 +310,6 @@ pub const Parser = struct {
         var token = try self.current() orelse return Error.UnexpectedEndOfInput;
         dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
         var statements = std.ArrayList(*Node).init(self.arena.allocator());
-        dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
         while (token.type != TokenType.rbrace) {
             dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
             try statements.append(try self.parseStatement());
@@ -456,6 +455,20 @@ fn isVariable(node: *const Node) bool {
 fn isFuncCall(node: *const Node) bool {
     return switch (node.*) {
         .func_call => true,
+        else => false,
+    };
+}
+
+fn isFuncDecl(node: *const Node) bool {
+    return switch (node.*) {
+        .func_decl => true,
+        else => false,
+    };
+}
+
+fn isProgram(node: *const Node) bool {
+    return switch (node.*) {
+        .program => true,
         else => false,
     };
 }
@@ -752,4 +765,70 @@ test "parseCompoundStatement - function call - 2 args - 2 exprs" {
     try std.testing.expect(isVariable(statement_1.rhs));
     const var_b = statement_1.rhs.variable.*;
     try std.testing.expectEqualStrings(var_b.id, "b");
+}
+
+test "parseProgram - function main" {
+    var tokens = [_]Token{
+        Token{ .type = TokenType.function_kw, .lexeme = "function", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.id, .lexeme = "main", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lparen, .lexeme = "(", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rparen, .lexeme = ")", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lbrace, .lexeme = "{", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rbrace, .lexeme = "}", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = undefined },
+    };
+    var parser = try setupParserTest(&tokens);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+    try std.testing.expectEqual(program.functions.items.len, 1);
+    try std.testing.expectEqual(program.global_statements.items.len, 0);
+
+    const func_main = program.functions.items[0].*.func_decl;
+    try std.testing.expectEqualStrings(func_main.id, "main");
+    try std.testing.expectEqual(func_main.statements.items.len, 0);
+}
+
+test "parseProgram - main, func and global statements" {
+    var tokens = [_]Token{
+        Token{ .type = TokenType.id, .lexeme = "a;", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.assign, .lexeme = "=", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.integer, .lexeme = "42", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.semi, .lexeme = ";", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.id, .lexeme = "b", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.assign, .lexeme = "=", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.id, .lexeme = "a", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.semi, .lexeme = ";", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.function_kw, .lexeme = "function", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.id, .lexeme = "main", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lparen, .lexeme = "(", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rparen, .lexeme = ")", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lbrace, .lexeme = "{", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rbrace, .lexeme = "}", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = undefined },
+    };
+    var parser = try setupParserTest(&tokens);
+    defer parser.deinit();
+
+    const program = try parser.parse();
+    try std.testing.expectEqual(program.functions.items.len, 1);
+    try std.testing.expectEqual(program.global_statements.items.len, 2);
+
+    try std.testing.expect(isBinOp(program.global_statements.items[0]));
+    const stmt_a_assign_42 = program.global_statements.items[0].*.binop;
+    try std.testing.expect(isVariable(stmt_a_assign_42.lhs));
+    const stmt_a_assign_42_var_a = stmt_a_assign_42.lhs.*.variable;
+    // TODO: debug wtf "a;"
+    try std.testing.expectEqualStrings(
+        "a",
+        stmt_a_assign_42_var_a.id,
+    );
+
+    // const stmt_a_assign_42_42
+    // try std.testing.expectEqual(stmt_a_assign_42.lhs
+    try std.testing.expect(isNum(stmt_a_assign_42.rhs));
+
+    const func_main = program.functions.items[0].*.func_decl;
+    try std.testing.expectEqualStrings(func_main.id, "main");
+    try std.testing.expectEqual(func_main.statements.items.len, 0);
 }
