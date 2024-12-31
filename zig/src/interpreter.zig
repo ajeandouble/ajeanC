@@ -2,7 +2,6 @@ const std = @import("std");
 const dbg = @import("./debug.zig");
 const AstNode = @import("./ast_nodes.zig");
 const Node = @import("./ast_nodes.zig").Node;
-const Hashset = @import("./hashset.zig").HashSet;
 
 const Error = error{ InterpretError, DuplicateFunctionDeclaration, MissingMainFunctionDeclaration };
 

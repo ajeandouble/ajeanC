@@ -2,38 +2,43 @@ const std = @import("std");
 const dbg = @import("./debug.zig");
 const Token = @import("./tokens.zig").Token;
 const TokenType = @import("./tokens.zig").TokenType;
-const res_kw = @import("./reserved_kws.zig");
+const reserved = @import("./lex_constants.zig").reserved;
+const op_math = @import("./lex_constants.zig").math;
+const op_cmp = @import("./lex_constants.zig").cmp;
+const op_assign = @import("./lex_constants.zig").assign;
+const delimeters = @import("./lex_constants.zig").delimeters;
+const separators = @import("./lex_constants.zig").separators;
 const Error = error{ NullSource, NullTokens, BadToken, OutOfBounds, UnterminatedString };
 
 const reserved_kws = std.StaticStringMap(TokenType).initComptime(.{
-    .{ res_kw.reserved_function, TokenType.function_kw },
-    .{ res_kw.reserved_return, TokenType.return_kw },
-    .{ res_kw.reserved_if, TokenType.if_kw },
-    .{ res_kw.reserved_else, TokenType.else_kw },
-    .{ res_kw.reserved_while, TokenType.while_kw },
-    .{ res_kw.reserved_for, TokenType.for_kw },
-    .{ res_kw.reserved_break, TokenType.break_kw },
-    .{ res_kw.reserved_continue, TokenType.continue_kw },
+    .{ reserved._function, TokenType.function_kw },
+    .{ reserved._return, TokenType.return_kw },
+    .{ reserved._if, TokenType.if_kw },
+    .{ reserved._else, TokenType.else_kw },
+    .{ reserved._while, TokenType.while_kw },
+    .{ reserved._for, TokenType.for_kw },
+    .{ reserved._break, TokenType.break_kw },
+    .{ reserved._continue, TokenType.continue_kw },
 });
 
 const single_chr_toks = std.StaticStringMap(TokenType).initComptime(.{
-    .{ "+", TokenType.plus },
-    .{ "-", TokenType.minus },
-    .{ "*", TokenType.mul },
-    .{ "/", TokenType.div },
-    .{ "%", TokenType.mod },
-    .{ "<", TokenType.lt },
-    .{ "=", TokenType.assign },
-    .{ ">", TokenType.gt },
-    .{ "(", TokenType.lparen },
-    .{ ")", TokenType.rparen },
-    .{ "{", TokenType.lbrace },
-    .{ "}", TokenType.rbrace },
-    .{ ",", TokenType.comma },
-    .{ ";", TokenType.semi },
+    .{ op_math.plus, TokenType.plus },
+    .{ op_math.minus, TokenType.minus },
+    .{ op_math.mul, TokenType.mul },
+    .{ op_math.div, TokenType.div },
+    .{ op_math.mod, TokenType.mod },
+    .{ op_cmp.lt, TokenType.lt },
+    .{ op_assign.assign, TokenType.assign },
+    .{ op_cmp.gt, TokenType.gt },
+    .{ delimeters.lparen, TokenType.lparen },
+    .{ delimeters.rparen, TokenType.rparen },
+    .{ delimeters.lbrace, TokenType.lbrace },
+    .{ delimeters.rbrace, TokenType.rbrace },
+    .{ delimeters.lbrack, TokenType.lbrack },
+    .{ delimeters.rbrack, TokenType.rbrack },
+    .{ separators.comma, TokenType.comma },
+    .{ separators.semi, TokenType.semi },
     .{ "\n", TokenType.eol },
-    .{ "[", TokenType.lbrack },
-    .{ "]", TokenType.rbrack },
 });
 
 const mult_chr_toks = std.StaticStringMap(TokenType).initComptime(.{
@@ -244,56 +249,56 @@ test "lexer reserved keywords" {
     // function
     const tok_0 = try tokens.items[0].getToken();
     const tok_0_lexeme = try tokens.items[0].getLexeme();
-    try std.testing.expect(std.mem.eql(u8, tok_0_lexeme, res_kw.reserved_function));
+    try std.testing.expect(std.mem.eql(u8, tok_0_lexeme, reserved._function));
     try std.testing.expect(tok_0.type == TokenType.function_kw);
     try std.testing.expect(tok_0.line == 0);
 
     // return
     const tok_1 = try tokens.items[1].getToken();
     const tok_1_lexeme = try tok_1.getLexeme();
-    try std.testing.expect(std.mem.eql(u8, tok_1_lexeme, "return"));
+    try std.testing.expect(std.mem.eql(u8, tok_1_lexeme, reserved._return));
     try std.testing.expect(tok_1.type == TokenType.return_kw);
     try std.testing.expect(tok_1.line == 0);
 
     // if
     const tok_2 = try tokens.items[2].getToken();
     const tok_2_lexeme = try tok_2.getLexeme();
-    try std.testing.expect(std.mem.eql(u8, tok_2_lexeme, "if"));
+    try std.testing.expect(std.mem.eql(u8, tok_2_lexeme, reserved._if));
     try std.testing.expect(tok_2.type == TokenType.if_kw);
     try std.testing.expect(tok_2.line == 0);
 
     // // else
     const tok_3 = try tokens.items[3].getToken();
     const tok_3_lexeme = try tok_3.getLexeme();
-    try std.testing.expect(std.mem.eql(u8, tok_3_lexeme, "else"));
+    try std.testing.expect(std.mem.eql(u8, tok_3_lexeme, reserved._else));
     try std.testing.expect(tok_3.type == TokenType.else_kw);
     try std.testing.expect(tok_3.line == 0);
 
     // while
     const tok_4 = try tokens.items[4].getToken();
     const tok_4_lexeme = try tok_4.getLexeme();
-    try std.testing.expect(std.mem.eql(u8, tok_4_lexeme, "while"));
+    try std.testing.expect(std.mem.eql(u8, tok_4_lexeme, reserved._while));
     try std.testing.expect(tok_4.type == TokenType.while_kw);
     try std.testing.expect(tok_4.line == 0);
 
     // for
     const tok_5 = try tokens.items[5].getToken();
     const tok_5_lexeme = try tok_5.getLexeme();
-    try std.testing.expect(std.mem.eql(u8, tok_5_lexeme, "for"));
+    try std.testing.expect(std.mem.eql(u8, tok_5_lexeme, reserved._for));
     try std.testing.expect(tok_5.type == TokenType.for_kw);
     try std.testing.expect(tok_5.line == 0);
 
     // break
     const tok_6 = try tokens.items[6].getToken();
     const tok_6_lexeme = try tok_6.getLexeme();
-    try std.testing.expect(std.mem.eql(u8, tok_6_lexeme, "break"));
+    try std.testing.expect(std.mem.eql(u8, tok_6_lexeme, reserved._break));
     try std.testing.expect(tok_6.type == TokenType.break_kw);
     try std.testing.expect(tok_6.line == 0);
 
     // continue
     const tok_7 = try tokens.items[7].getToken();
     const tok_7_lexeme = try tok_7.getLexeme();
-    try std.testing.expect(std.mem.eql(u8, tok_7_lexeme, "continue"));
+    try std.testing.expect(std.mem.eql(u8, tok_7_lexeme, reserved._continue));
     try std.testing.expect(tok_7.type == TokenType.continue_kw);
     try std.testing.expect(tok_7.line == 0);
 

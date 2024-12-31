@@ -4,7 +4,7 @@ const Token = @import("./tokens.zig").Token;
 const TokenType = @import("./tokens.zig").TokenType;
 const AstNode = @import("./ast_nodes.zig");
 const Node = AstNode.Node;
-const res_kw = @import("./reserved_kws.zig");
+const res_kw = @import("./lex_constants.zig");
 
 const NotImplemented = error{NotImplemented}.NotImplemented;
 
