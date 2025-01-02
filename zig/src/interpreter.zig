@@ -10,7 +10,7 @@ const activeTag = std.meta.activeTag;
 const Token = @import("./tokens.zig").Token;
 
 const NotImplented = error{NotImplemented}.NotImplemented;
-const Error = error{ InterpretError, DuplicateFunctionDeclaration, MissingMainFunctionDeclaration, MismatchingBinOpTypes };
+const Error = error{ InterpretError, DuplicateFunctionDeclaration, MissingMainFunctionDeclaration, MismatchingBinOpTypes, InvalidGlobalStatement };
 
 const ResultType = enum { integer, string, err, void };
 
@@ -24,7 +24,7 @@ const _Variable = struct { type: _VariableType, str: []u8, int: i64 };
 
 pub const StackFrame = struct {
     const Self = @This();
-    locals: std.StringHashMap(Result),
+    locals: *std.StringHashMap(Result),
 
     pub fn init(allocator: std.mem.Allocator) !*Self {
         dbg.print("\n", .{}, @src());
@@ -42,12 +42,15 @@ pub const StackFrame = struct {
 pub const Interpreter = struct {
     const Self = @This();
     arena: std.heap.ArenaAllocator,
-    stack: std.ArrayList(StackFrame),
+    stack: *std.ArrayList(StackFrame),
     ast: *const AstNode.Program = undefined,
 
     pub fn init(ast: *AstNode.Program, allocator: std.mem.Allocator) !Self {
         var arena = std.heap.ArenaAllocator.init(allocator);
-        return Self{ .ast = ast, .arena = arena, .stack = std.ArrayList(StackFrame).init(arena.allocator()) };
+        const stack = try arena.allocator().create(std.ArrayList(StackFrame));
+        // FIXME: ! weird behaviour, needs to alocate a lot
+        stack.* = try std.ArrayList(StackFrame).initCapacity(arena.allocator(), 1024);
+        return Self{ .arena = arena, .ast = ast, .stack = stack };
     }
 
     pub fn deinit(self: *Self) void {
@@ -56,9 +59,11 @@ pub const Interpreter = struct {
 
     // Stack
     pub fn pushStack(self: *Self) !void {
-        dbg.print("Stack initialized: capacity = {}, length = {}\n", .{ self.stack.capacity, self.stack.items.len }, @src());
-        const new_frame = StackFrame{ .locals = std.StringHashMap(Result).init(std.heap.HeapAllocator) };
+        const locals = try self.arena.allocator().create(std.StringHashMap(Result));
+        locals.* = std.StringHashMap(Result).init(self.arena.allocator());
+        const new_frame = StackFrame{ .locals = locals };
         try self.stack.append(new_frame);
+        dbg.print("Stack: capacity = {}, length = {}\n", .{ self.stack.capacity, self.stack.items.len }, @src());
     }
 
     pub fn popStack(self: *Self) !void {
@@ -68,7 +73,7 @@ pub const Interpreter = struct {
 
     // Node visiting
     fn visitInteger(self: *Self, num: *Num) i64 {
-        dbg.print("{}", .{num.value}, @src());
+        dbg.print("{}\n", .{num.value}, @src());
         _ = self;
         return num.value;
     }
@@ -77,16 +82,12 @@ pub const Interpreter = struct {
     fn visitFuncDecl(self: *Self, func_decl: *const AstNode.FunctionDecl) !Result {
         dbg.print("{s}\n", .{func_decl.id}, @src());
         try self.pushStack();
-        // for (func_decl.statements.items) |stmt| {
-        //     dbg.print("--\n", .{}, @src());
-        //     _ = try self.visit(stmt);
-        // }
+        for (func_decl.statements.items) |stmt| {
+            dbg.print("\n", .{}, @src());
+            _ = try self.visit(stmt);
+        }
         return Result{ .integer = .{ .val = 42 } }; // FIXME: dummy return placeholder
     }
-
-    // fn visitAssign(self: *Self, node: *const Node) !Result {
-    //     return Result{ .integer = .{ .val = 42 } }; // FIXME: dummy return placeholder
-    // }
 
     fn visit(self: *Self, node: *const Node) anyerror!Result {
         dbg.print("\n", .{}, @src());
@@ -95,6 +96,9 @@ pub const Interpreter = struct {
             .num => return Result{ .integer = .{ .val = self.visitInteger(node.*.num) } },
             .binop => return try self.visitBinOp(node.*.binop),
             .unaryop => return try self.visitUnaryOp(node.*.unaryop),
+            .variable => {
+                return NotImplented;
+            },
             else => {
                 return NotImplented;
             },
@@ -127,6 +131,7 @@ pub const Interpreter = struct {
     }
 
     fn visitAssignment(self: *Self, binop: *const BinOp) !void {
+        dbg.print("\n", .{}, @src());
         var locals = self.stack.getLast().locals;
         const id = try self.arena.allocator().dupe(u8, binop.*.lhs.variable.id);
         const rhs_result = try self.visit(binop.rhs);
@@ -134,9 +139,9 @@ pub const Interpreter = struct {
     }
 
     fn visitBinOp(self: *Self, binop: *const BinOp) !Result {
-        dbg.print("{s}\n", .{binop.token.lexeme.?}, @src());
+        dbg.print("\"{s}\"\n", .{binop.token.lexeme.?}, @src());
         if (binop.token.type == TokenType.assign) {
-            // try self.visitAssignment(binop);
+            try self.visitAssignment(binop);
             return Result{ .void = .{} };
         }
 
@@ -156,7 +161,7 @@ pub const Interpreter = struct {
     }
 
     fn visitUnaryOp(self: *Self, unaryop: *const UnaryOp) !Result {
-        dbg.print("{s}\n", .{unaryop.token.lexeme.?}, @src());
+        dbg.print("'{s}'\n", .{unaryop.token.lexeme.?}, @src());
         var value_result = try self.visit(unaryop.value);
         const value_res_tag = activeTag(value_result);
 
@@ -175,6 +180,16 @@ pub const Interpreter = struct {
         dbg.print("\n", .{}, @src());
         const functions = self.ast.functions;
         var global_funcs = std.StringHashMap(*AstNode.FunctionDecl).init(self.arena.allocator());
+        try self.pushStack();
+        const global_statements = self.ast.global_statements;
+        for (global_statements.items) |stmt| {
+            switch (stmt.*) {
+                .binop => {
+                    try self.visitAssignment(stmt.*.binop);
+                },
+                else => return Error.InvalidGlobalStatement,
+            }
+        }
         for (functions.items) |func| {
             switch (func.*) {
                 .func_decl => {
@@ -189,10 +204,16 @@ pub const Interpreter = struct {
             }
         }
         dbg.print("global_len: {} ---\n", .{self.ast.global_statements.items.len}, @src());
+        var i: usize = 0;
+        const locals = self.stack.items[0].locals;
+        var it = locals.iterator();
+        while (it.next()) |item| {
+            dbg.print("{s}\n", .{item.key_ptr.*}, @src());
+            dbg.print("{}\n", .{item.value_ptr.*}, @src());
+            i += 1;
+        }
         dbg.print("funcs_len: {} ---\n", .{self.ast.functions.items.len}, @src());
         _ = try self.visitFuncDecl(global_funcs.get("main") orelse return Error.MissingMainFunctionDeclaration);
-        // _ = try self.visit(self.ast.functions.items[0].*.func_decl.statements.items[0]);
-        // TODO: implement program return value
         return 0;
     }
 };

@@ -43,5 +43,6 @@ pub fn main() !u8 {
 
     var interpreter = try Interpreter.init(ast, allocator);
     const ret = try interpreter.interpret();
+    defer interpreter.deinit();
     return ret;
 }
