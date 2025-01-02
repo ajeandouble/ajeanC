@@ -2,15 +2,19 @@ const std = @import("std");
 const dbg = @import("./debug.zig");
 const AstNode = @import("./ast_nodes.zig");
 const Node = @import("./ast_nodes.zig").Node;
+const Program = @import("./ast_nodes.zig").Program;
+const FunctionDecl = @import("./ast_nodes.zig").FunctionDecl;
 const BinOp = @import("./ast_nodes.zig").BinOp;
 const UnaryOp = @import("./ast_nodes.zig").UnaryOp;
 const Num = @import("./ast_nodes.zig").Num;
+const Variable = @import("./ast_nodes.zig").Variable;
+const FunctionCall = @import("./ast_nodes.zig").FunctionCall;
 const TokenType = @import("./tokens.zig").TokenType;
-const activeTag = std.meta.activeTag;
 const Token = @import("./tokens.zig").Token;
+const activeTag = std.meta.activeTag;
 
 const NotImplented = error{NotImplemented}.NotImplemented;
-const Error = error{ InterpretError, DuplicateFunctionDeclaration, MissingMainFunctionDeclaration, MismatchingBinOpTypes, InvalidGlobalStatement };
+const Error = error{ InterpretError, DuplicateFunctionDeclaration, MissingMainFunctionDeclaration, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared };
 
 const ResultType = enum { integer, string, err, void };
 
@@ -43,14 +47,17 @@ pub const Interpreter = struct {
     const Self = @This();
     arena: std.heap.ArenaAllocator,
     stack: *std.ArrayList(StackFrame),
-    ast: *const AstNode.Program = undefined,
+    ast: *const Program = undefined,
+    global_funcs: *std.StringHashMap(*FunctionDecl),
 
-    pub fn init(ast: *AstNode.Program, allocator: std.mem.Allocator) !Self {
+    pub fn init(ast: *Program, allocator: std.mem.Allocator) !Self {
         var arena = std.heap.ArenaAllocator.init(allocator);
         const stack = try arena.allocator().create(std.ArrayList(StackFrame));
+        const global_funcs = try arena.allocator().create(std.StringHashMap(*FunctionDecl));
+        global_funcs.* = std.StringHashMap(*FunctionDecl).init(arena.allocator());
         // FIXME: ! weird behaviour, needs to alocate a lot
         stack.* = try std.ArrayList(StackFrame).initCapacity(arena.allocator(), 1024);
-        return Self{ .arena = arena, .ast = ast, .stack = stack };
+        return Self{ .arena = arena, .ast = ast, .stack = stack, .global_funcs = global_funcs };
     }
 
     pub fn deinit(self: *Self) void {
@@ -79,7 +86,7 @@ pub const Interpreter = struct {
     }
 
     // Interpretation of funtion body
-    fn visitFuncDecl(self: *Self, func_decl: *const AstNode.FunctionDecl) !Result {
+    fn visitFuncDecl(self: *Self, func_decl: *const FunctionDecl) !Result {
         dbg.print("{s}\n", .{func_decl.id}, @src());
         try self.pushStack();
         for (func_decl.statements.items) |stmt| {
@@ -89,6 +96,24 @@ pub const Interpreter = struct {
         return Result{ .integer = .{ .val = 42 } }; // FIXME: dummy return placeholder
     }
 
+    fn visitVariable(self: *Self, node: *const Variable) !Result {
+        dbg.print("variable id={s}\n", .{node.id}, @src());
+        var locals = self.stack.getLast().locals;
+        if (locals.get(node.id)) |value| {
+            return Result{ .integer = .{ .val = value.integer.val } };
+        } else {
+            return Error.VariableIsNotDeclared;
+        }
+    }
+
+    fn visitFuncCall(self: *Self, node: *const FunctionCall) !Result {
+        const id = node.id;
+        if (self.global_funcs.get(id)) |value| {
+            return self.visitFuncDecl(value);
+        } else {
+            return Error.VariableIsNotDeclared;
+        }
+    }
     fn visit(self: *Self, node: *const Node) anyerror!Result {
         dbg.print("\n", .{}, @src());
         switch (node.*) {
@@ -96,9 +121,8 @@ pub const Interpreter = struct {
             .num => return Result{ .integer = .{ .val = self.visitInteger(node.*.num) } },
             .binop => return try self.visitBinOp(node.*.binop),
             .unaryop => return try self.visitUnaryOp(node.*.unaryop),
-            .variable => {
-                return NotImplented;
-            },
+            .variable => return try self.visitVariable(node.*.variable),
+            .func_call => return try self.visitFuncCall(node.*.func_call),
             else => {
                 return NotImplented;
             },
@@ -108,7 +132,7 @@ pub const Interpreter = struct {
     fn computeIntBinOp(self: *Self, binop: *const BinOp, lhs_result: Result, rhs_result: Result) !i64 {
         const lhs_val = lhs_result.integer.val;
         const rhs_val = rhs_result.integer.val;
-        dbg.print("{} {s} {}\n", .{ lhs_val, binop.token.lexeme.?, rhs_val }, @src());
+        dbg.print("{} {} {}\n", .{ lhs_val, binop.token.type, rhs_val }, @src());
         var new_val: i64 = undefined;
         switch (binop.token.type) {
             TokenType.plus => new_val = lhs_result.integer.val + rhs_result.integer.val,
@@ -179,7 +203,6 @@ pub const Interpreter = struct {
     pub fn interpret(self: *Self) !u8 {
         dbg.print("\n", .{}, @src());
         const functions = self.ast.functions;
-        var global_funcs = std.StringHashMap(*AstNode.FunctionDecl).init(self.arena.allocator());
         try self.pushStack();
         const global_statements = self.ast.global_statements;
         for (global_statements.items) |stmt| {
@@ -195,10 +218,10 @@ pub const Interpreter = struct {
                 .func_decl => {
                     const id = func.func_decl.*.id;
                     dbg.print("Function id={s}\n", .{id}, @src());
-                    if (global_funcs.contains(id)) {
+                    if (self.global_funcs.contains(id)) {
                         return Error.DuplicateFunctionDeclaration;
                     }
-                    try global_funcs.put(id, func.func_decl);
+                    try self.global_funcs.put(id, func.func_decl);
                 },
                 else => return Error.InterpretError,
             }
@@ -213,7 +236,7 @@ pub const Interpreter = struct {
             i += 1;
         }
         dbg.print("funcs_len: {} ---\n", .{self.ast.functions.items.len}, @src());
-        _ = try self.visitFuncDecl(global_funcs.get("main") orelse return Error.MissingMainFunctionDeclaration);
+        _ = try self.visitFuncDecl(self.global_funcs.get("main") orelse return Error.MissingMainFunctionDeclaration);
         return 0;
     }
 };

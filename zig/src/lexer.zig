@@ -177,6 +177,7 @@ pub const Lexer: type = struct {
         while (std.ascii.isAlphanumeric(self.peek(0))) {
             try self.advance(1);
         }
+        dbg.print("'{s}'\n", .{self.source.?[start..self.pos]}, @src());
         return Token.init(TokenType.id, self.source.?[start..self.pos], self.line, self.allocator);
     }
 
