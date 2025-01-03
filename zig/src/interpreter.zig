@@ -9,22 +9,17 @@ const UnaryOp = @import("./ast_nodes.zig").UnaryOp;
 const Num = @import("./ast_nodes.zig").Num;
 const Variable = @import("./ast_nodes.zig").Variable;
 const FunctionCall = @import("./ast_nodes.zig").FunctionCall;
+const IfBlock = @import("./ast_nodes.zig").IfBlock;
 const TokenType = @import("./tokens.zig").TokenType;
 const Token = @import("./tokens.zig").Token;
 const activeTag = std.meta.activeTag;
 
 const NotImplented = error{NotImplemented}.NotImplemented;
-const Error = error{ InterpretError, DuplicateFunctionDeclaration, MissingMainFunctionDeclaration, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger };
+const Error = error{ InterpretError, DuplicateFunctionDeclaration, MissingMainFunctionDeclaration, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger, InvalidIfBlockExpression };
 
 const ResultType = enum { integer, string, err, void };
 
 const Result = union(ResultType) { integer: struct { val: i64 }, string: struct { val: []u8 }, err: struct { type: Error, msg: []u8 }, void: struct {} };
-const _VariableType = enum {
-    integer,
-    float,
-    str,
-};
-const _Variable = struct { type: _VariableType, str: []u8, int: i64 };
 
 pub const StackFrame = struct {
     const Self = @This();
@@ -126,6 +121,34 @@ pub const Interpreter = struct {
             return Error.VariableIsNotDeclared;
         }
     }
+
+    fn visitIfBlock(self: *Self, if_block: *const IfBlock) !Result {
+        const result = try self.visit(if_block.expr);
+        var condition: bool = undefined;
+        switch (result) {
+            .integer => condition = result.integer.val != 0,
+            else => return Error.InvalidIfBlockExpression,
+        }
+        if (condition) {
+            const body = if_block.statements.items;
+            for (body) |stmt| {
+                dbg.print("\n", .{}, @src());
+                var tmp_ret: Result = undefined;
+                switch (stmt.*) {
+                    .ret => {
+                        tmp_ret = try self.visit(stmt.ret.expr);
+                        // ret_value = tmp_ret;
+                        dbg.print("{}\n", .{tmp_ret}, @src());
+                        break;
+                    },
+                    else => tmp_ret = try self.visit(stmt),
+                }
+                dbg.print("{}\n", .{tmp_ret}, @src());
+            }
+        }
+        return Result{ .void = .{} };
+    }
+
     fn visit(self: *Self, node: *const Node) anyerror!Result {
         dbg.print("\n", .{}, @src());
         switch (node.*) {
@@ -135,6 +158,9 @@ pub const Interpreter = struct {
             .unaryop => return try self.visitUnaryOp(node.*.unaryop),
             .variable => return try self.visitVariable(node.*.variable),
             .func_call => return try self.visitFuncCall(node.*.func_call),
+            .if_block => {
+                return try self.visitIfBlock(node.*.if_block);
+            },
             else => {
                 return NotImplented;
             },
@@ -191,7 +217,6 @@ pub const Interpreter = struct {
         const lhs_result = try self.visit(binop.lhs);
         const rhs_result = try self.visit(binop.rhs);
         const lhs_res_tag = activeTag(lhs_result);
-        // const rhs_res_tag = activeTag(rhs_result);
         switch (lhs_res_tag) {
             .integer => {
                 return Result{ .integer = .{ .val = try self.computeIntBinOp(binop, lhs_result, rhs_result) } };
@@ -203,9 +228,8 @@ pub const Interpreter = struct {
     fn visitUnaryOp(self: *Self, unaryop: *const UnaryOp) !Result {
         dbg.print("'{s}'\n", .{unaryop.token.lexeme.?}, @src());
         var value_result = try self.visit(unaryop.value);
-        const value_res_tag = activeTag(value_result);
 
-        switch (value_res_tag) {
+        switch (value_result) {
             .integer => {
                 if (unaryop.token.type == TokenType.minus) {
                     value_result.integer.val = -value_result.integer.val;

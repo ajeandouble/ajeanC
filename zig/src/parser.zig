@@ -253,7 +253,20 @@ pub const Parser = struct {
         try self.eat(TokenType.return_kw);
         const expr = try self.parseExpr();
         try self.eat(TokenType.semi);
-        return try self.makeNode(Node{ .ret = try AstNode.Return.make(AstNode.Return{ .token = token, .expr = expr }, self.arena.allocator()) });
+        const ret = try AstNode.Return.make(AstNode.Return{ .token = token, .expr = expr }, self.arena.allocator());
+        return try self.makeNode(Node{ .ret = ret });
+    }
+
+    pub fn parseIfBlock(self: *Self) anyerror!*Node {
+        const token = try self.current() orelse return Error.UnexpectedEndOfInput;
+        dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
+        try self.eat(TokenType.if_kw);
+        try self.eat(TokenType.lparen);
+        const expr = try self.parseExpr();
+        try self.eat(TokenType.rparen);
+        const statements = try self.parseCompoundStatement();
+        const if_block = try AstNode.IfBlock.make(AstNode.IfBlock{ .expr = expr, .statements = statements }, self.arena.allocator());
+        return self.makeNode(Node{ .if_block = if_block });
     }
 
     pub fn parseStatement(self: *Self) anyerror!*Node {
@@ -280,12 +293,15 @@ pub const Parser = struct {
                     },
                 }
             },
+            .if_kw => {
+                return self.parseIfBlock();
+            },
             .return_kw => {
                 return self.parseReturnStatement();
             },
-            // TODO: if block
-            // TODO: return_statement
-            else => {},
+            else => {
+                return Error.BadToken;
+            },
         }
         // TODO: statements parsing
         return Error.BadToken;

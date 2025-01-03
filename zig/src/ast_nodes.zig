@@ -135,4 +135,18 @@ pub const Return = struct {
         return instance;
     }
 };
-pub const Node = union(enum) { num: *Num, binop: *BinOp, unaryop: *UnaryOp, variable: *Variable, func_call: *FunctionCall, func_decl: *FunctionDecl, program: *Program, ret: *Return };
+
+pub const IfBlock = struct {
+    const Self = @This();
+    token: Token = undefined,
+    expr: *const Node = undefined,
+    statements: std.ArrayList(*Node) = undefined,
+
+    pub fn make(if_block: Self, allocator: std.mem.Allocator) anyerror!*Self {
+        const instance = try allocator.create(Self);
+        instance.* = if_block;
+        return instance;
+    }
+};
+
+pub const Node = union(enum) { num: *Num, binop: *BinOp, unaryop: *UnaryOp, variable: *Variable, func_call: *FunctionCall, func_decl: *FunctionDecl, program: *Program, ret: *Return, if_block: *IfBlock };
