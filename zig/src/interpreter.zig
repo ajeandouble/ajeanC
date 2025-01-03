@@ -14,7 +14,7 @@ const Token = @import("./tokens.zig").Token;
 const activeTag = std.meta.activeTag;
 
 const NotImplented = error{NotImplemented}.NotImplemented;
-const Error = error{ InterpretError, DuplicateFunctionDeclaration, MissingMainFunctionDeclaration, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared };
+const Error = error{ InterpretError, DuplicateFunctionDeclaration, MissingMainFunctionDeclaration, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger };
 
 const ResultType = enum { integer, string, err, void };
 
@@ -85,15 +85,27 @@ pub const Interpreter = struct {
     }
 
     // Interpretation of funtion body
-    fn visitFuncDecl(self: *Self, func_decl: *const FunctionDecl) !Result {
+    fn visitFuncBody(self: *Self, func_decl: *const FunctionDecl) !Result {
         dbg.print("{s}\n", .{func_decl.id}, @src());
         try self.pushStack();
-        for (func_decl.statements.items) |stmt| {
+        var ret_value: Result = Result{ .void = .{} };
+        const body = func_decl.statements.items;
+        for (body) |stmt| {
             dbg.print("\n", .{}, @src());
-            _ = try self.visit(stmt);
+            var tmp_ret: Result = undefined;
+            switch (stmt.*) {
+                .ret => {
+                    tmp_ret = try self.visit(stmt.ret.expr);
+                    ret_value = tmp_ret;
+                    dbg.print("{}\n", .{tmp_ret}, @src());
+                    break;
+                },
+                else => tmp_ret = try self.visit(stmt),
+            }
+            dbg.print("{}\n", .{tmp_ret}, @src());
         }
         try self.popStack();
-        return Result{ .integer = .{ .val = 42 } }; // FIXME: dummy return placeholder
+        return ret_value;
     }
 
     fn visitVariable(self: *Self, node: *const Variable) !Result {
@@ -109,7 +121,7 @@ pub const Interpreter = struct {
     fn visitFuncCall(self: *Self, node: *const FunctionCall) !Result {
         const id = node.id;
         if (self.global_funcs.get(id)) |value| {
-            return self.visitFuncDecl(value);
+            return self.visitFuncBody(value);
         } else {
             return Error.VariableIsNotDeclared;
         }
@@ -156,15 +168,17 @@ pub const Interpreter = struct {
 
     fn visitAssignment(self: *Self, binop: *const BinOp) !void {
         dbg.print("\n", .{}, @src());
-        var locals = self.stack.getLast().symbols;
+        const locals_ptr = &(self.stack.items[self.stack.items.len - 1].symbols);
+        var locals = locals_ptr.*;
         const id = try self.allocator.dupe(u8, binop.*.lhs.variable.id);
         const rhs_result = try self.visit(binop.rhs);
         try locals.put(id, rhs_result);
-        var it = locals.iterator();
+        var it = self.stack.getLast().symbols.iterator();
         while (it.next()) |item| {
             dbg.print("{s}\n", .{item.key_ptr.*}, @src());
             dbg.print("{}\n", .{item.value_ptr.*}, @src());
         }
+        locals_ptr.* = locals;
     }
 
     fn visitBinOp(self: *Self, binop: *const BinOp) !Result {
@@ -177,10 +191,7 @@ pub const Interpreter = struct {
         const lhs_result = try self.visit(binop.lhs);
         const rhs_result = try self.visit(binop.rhs);
         const lhs_res_tag = activeTag(lhs_result);
-        const rhs_res_tag = activeTag(rhs_result);
-        if (lhs_res_tag != rhs_res_tag) {
-            return Error.MismatchingBinOpTypes;
-        }
+        // const rhs_res_tag = activeTag(rhs_result);
         switch (lhs_res_tag) {
             .integer => {
                 return Result{ .integer = .{ .val = try self.computeIntBinOp(binop, lhs_result, rhs_result) } };
@@ -205,7 +216,7 @@ pub const Interpreter = struct {
         return value_result;
     }
 
-    pub fn interpret(self: *Self) !u8 {
+    pub fn interpret(self: *Self) !i64 {
         dbg.print("\n", .{}, @src());
         const functions = self.ast.functions;
         const global_statements = self.ast.global_statements;
@@ -237,6 +248,13 @@ pub const Interpreter = struct {
         dbg.print("global_len: {}\n", .{self.ast.global_statements.items.len}, @src());
         var i: usize = 0;
         try self.pushStack();
+        const result = try self.visitFuncBody(self.global_funcs.get("main") orelse return Error.MissingMainFunctionDeclaration);
+        switch (result) {
+            .integer => {},
+            else => {
+                return Error.MainShouldReturnInteger;
+            },
+        }
         const global_symbols = self.stack.items[0].symbols;
         var it = global_symbols.iterator();
         while (it.next()) |item| {
@@ -244,8 +262,8 @@ pub const Interpreter = struct {
             dbg.print("{}\n", .{item.value_ptr.*}, @src());
             i += 1;
         }
+        try self.popStack();
         // dbg.print("funcs_len: {} ---\n", .{self.ast.functions.items.len}, @src());
-        _ = try self.visitFuncDecl(self.global_funcs.get("main") orelse return Error.MissingMainFunctionDeclaration);
-        return 0;
+        return result.integer.val;
     }
 };

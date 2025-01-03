@@ -124,4 +124,15 @@ pub const Program = struct {
     }
 };
 
-pub const Node = union(enum) { num: *Num, binop: *BinOp, unaryop: *UnaryOp, variable: *Variable, func_call: *FunctionCall, func_decl: *FunctionDecl, program: *Program };
+pub const Return = struct {
+    const Self = @This();
+    token: Token = undefined,
+    expr: *const Node = undefined,
+
+    pub fn make(return_stmt: Self, allocator: std.mem.Allocator) anyerror!*Self {
+        const instance = try allocator.create(Self);
+        instance.* = return_stmt;
+        return instance;
+    }
+};
+pub const Node = union(enum) { num: *Num, binop: *BinOp, unaryop: *UnaryOp, variable: *Variable, func_call: *FunctionCall, func_decl: *FunctionDecl, program: *Program, ret: *Return };

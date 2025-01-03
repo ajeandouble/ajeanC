@@ -45,7 +45,7 @@ pub fn main() !u8 {
     var gpa_ = (std.heap.GeneralPurposeAllocator(.{}){});
     const allocator_ = gpa_.allocator();
     var interpreter = try Interpreter.init(ast, allocator_);
-    const ret = try interpreter.interpret();
+    const ret: u8 = @intCast(try interpreter.interpret());
     defer interpreter.deinit();
     return ret;
 }

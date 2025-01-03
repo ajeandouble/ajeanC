@@ -247,6 +247,15 @@ pub const Parser = struct {
         return node;
     }
 
+    pub fn parseReturnStatement(self: *Self) anyerror!*Node {
+        const token = try self.current() orelse return Error.UnexpectedEndOfInput;
+        dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
+        try self.eat(TokenType.return_kw);
+        const expr = try self.parseExpr();
+        try self.eat(TokenType.semi);
+        return try self.makeNode(Node{ .ret = try AstNode.Return.make(AstNode.Return{ .token = token, .expr = expr }, self.arena.allocator()) });
+    }
+
     pub fn parseStatement(self: *Self) anyerror!*Node {
         const token = try self.current() orelse return Error.UnexpectedEndOfInput;
         dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
@@ -270,6 +279,9 @@ pub const Parser = struct {
                         return expr;
                     },
                 }
+            },
+            .return_kw => {
+                return self.parseReturnStatement();
             },
             // TODO: if block
             // TODO: return_statement
