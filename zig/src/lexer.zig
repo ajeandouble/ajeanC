@@ -62,7 +62,8 @@ pub const Lexer: type = struct {
     tokens: ?std.ArrayList(Token),
 
     pub fn init(buffer: []const u8, allocator: std.mem.Allocator) !Self {
-        const lexer = Self{ .allocator = allocator, .source = buffer, .tokens = std.ArrayList(Token).init(allocator) };
+        const tokens = std.ArrayList(Token).init(allocator);
+        const lexer = Self{ .allocator = allocator, .source = buffer, .tokens = tokens };
         return lexer;
     }
 
@@ -177,7 +178,6 @@ pub const Lexer: type = struct {
         while (std.ascii.isAlphanumeric(self.peek(0))) {
             try self.advance(1);
         }
-        dbg.print("'{s}'\n", .{self.source.?[start..self.pos]}, @src());
         return Token.init(TokenType.id, self.source.?[start..self.pos], self.line, self.allocator);
     }
 

@@ -28,54 +28,53 @@ const _Variable = struct { type: _VariableType, str: []u8, int: i64 };
 
 pub const StackFrame = struct {
     const Self = @This();
-    locals: *std.StringHashMap(Result),
+    symbols: std.StringHashMap(Result),
 
-    pub fn init(allocator: std.mem.Allocator) !*Self {
+    pub fn init(allocator: std.mem.Allocator) !Self {
         dbg.print("\n", .{}, @src());
-        const stack_frame = try allocator.create(StackFrame);
         const locals = std.StringHashMap(Result).init(allocator);
-        stack_frame.* = .{ .locals = locals };
-        return stack_frame;
+        return Self{ .symbols = locals };
     }
 
     pub fn deinit(self: *Self) void {
-        self.locals.deinit();
+        self.symbols.deinit();
     }
 };
 
 pub const Interpreter = struct {
     const Self = @This();
-    arena: std.heap.ArenaAllocator,
-    stack: *std.ArrayList(StackFrame),
+    allocator: std.mem.Allocator,
+    stack: std.ArrayList(StackFrame),
+    global_funcs: std.StringHashMap(*FunctionDecl),
     ast: *const Program = undefined,
-    global_funcs: *std.StringHashMap(*FunctionDecl),
 
     pub fn init(ast: *Program, allocator: std.mem.Allocator) !Self {
-        var arena = std.heap.ArenaAllocator.init(allocator);
-        const stack = try arena.allocator().create(std.ArrayList(StackFrame));
-        const global_funcs = try arena.allocator().create(std.StringHashMap(*FunctionDecl));
-        global_funcs.* = std.StringHashMap(*FunctionDecl).init(arena.allocator());
-        // FIXME: ! weird behaviour, needs to alocate a lot
-        stack.* = try std.ArrayList(StackFrame).initCapacity(arena.allocator(), 1024);
-        return Self{ .arena = arena, .ast = ast, .stack = stack, .global_funcs = global_funcs };
+        const stack = try std.ArrayList(StackFrame).initCapacity(allocator, 1024);
+        const global_funcs = std.StringHashMap(*FunctionDecl).init(allocator);
+        return Self{ .allocator = allocator, .ast = ast, .stack = stack, .global_funcs = global_funcs };
     }
 
     pub fn deinit(self: *Self) void {
-        self.arena.deinit();
+        self.stack.deinit();
+        self.global_funcs.deinit();
     }
 
     // Stack
     pub fn pushStack(self: *Self) !void {
-        const locals = try self.arena.allocator().create(std.StringHashMap(Result));
-        locals.* = std.StringHashMap(Result).init(self.arena.allocator());
-        const new_frame = StackFrame{ .locals = locals };
-        try self.stack.append(new_frame);
         dbg.print("Stack: capacity = {}, length = {}\n", .{ self.stack.capacity, self.stack.items.len }, @src());
+        const frame = try StackFrame.init(self.allocator);
+        try self.stack.append(frame);
     }
 
     pub fn popStack(self: *Self) !void {
-        // TODO: garbage collection!
-        try self.stack.pop();
+        dbg.print("\n", .{}, @src());
+        const frame = &self.stack.getLast();
+        var it = frame.symbols.iterator();
+        while (it.next()) |item| {
+            dbg.print("{s}\n", .{item.key_ptr.*}, @src());
+            dbg.print("{}\n", .{item.value_ptr.*}, @src());
+        }
+        _ = self.stack.pop();
     }
 
     // Node visiting
@@ -93,12 +92,13 @@ pub const Interpreter = struct {
             dbg.print("\n", .{}, @src());
             _ = try self.visit(stmt);
         }
+        try self.popStack();
         return Result{ .integer = .{ .val = 42 } }; // FIXME: dummy return placeholder
     }
 
     fn visitVariable(self: *Self, node: *const Variable) !Result {
         dbg.print("variable id={s}\n", .{node.id}, @src());
-        var locals = self.stack.getLast().locals;
+        var locals = self.stack.getLast().symbols;
         if (locals.get(node.id)) |value| {
             return Result{ .integer = .{ .val = value.integer.val } };
         } else {
@@ -156,10 +156,15 @@ pub const Interpreter = struct {
 
     fn visitAssignment(self: *Self, binop: *const BinOp) !void {
         dbg.print("\n", .{}, @src());
-        var locals = self.stack.getLast().locals;
-        const id = try self.arena.allocator().dupe(u8, binop.*.lhs.variable.id);
+        var locals = self.stack.getLast().symbols;
+        const id = try self.allocator.dupe(u8, binop.*.lhs.variable.id);
         const rhs_result = try self.visit(binop.rhs);
         try locals.put(id, rhs_result);
+        var it = locals.iterator();
+        while (it.next()) |item| {
+            dbg.print("{s}\n", .{item.key_ptr.*}, @src());
+            dbg.print("{}\n", .{item.value_ptr.*}, @src());
+        }
     }
 
     fn visitBinOp(self: *Self, binop: *const BinOp) !Result {
@@ -203,7 +208,6 @@ pub const Interpreter = struct {
     pub fn interpret(self: *Self) !u8 {
         dbg.print("\n", .{}, @src());
         const functions = self.ast.functions;
-        try self.pushStack();
         const global_statements = self.ast.global_statements;
         for (global_statements.items) |stmt| {
             switch (stmt.*) {
@@ -213,29 +217,34 @@ pub const Interpreter = struct {
                 else => return Error.InvalidGlobalStatement,
             }
         }
+        dbg.print("funcs_len: {}\n", .{self.ast.functions.items.len}, @src());
         for (functions.items) |func| {
             switch (func.*) {
                 .func_decl => {
+                    const decl = func.func_decl;
                     const id = func.func_decl.*.id;
                     dbg.print("Function id={s}\n", .{id}, @src());
                     if (self.global_funcs.contains(id)) {
                         return Error.DuplicateFunctionDeclaration;
                     }
-                    try self.global_funcs.put(id, func.func_decl);
+                    const key = try self.allocator.dupe(u8, func.func_decl.id);
+                    dbg.print("{s}\n", .{func.func_decl.id}, @src());
+                    try self.global_funcs.put(key, decl);
                 },
                 else => return Error.InterpretError,
             }
         }
-        dbg.print("global_len: {} ---\n", .{self.ast.global_statements.items.len}, @src());
+        dbg.print("global_len: {}\n", .{self.ast.global_statements.items.len}, @src());
         var i: usize = 0;
-        const locals = self.stack.items[0].locals;
-        var it = locals.iterator();
+        try self.pushStack();
+        const global_symbols = self.stack.items[0].symbols;
+        var it = global_symbols.iterator();
         while (it.next()) |item| {
             dbg.print("{s}\n", .{item.key_ptr.*}, @src());
             dbg.print("{}\n", .{item.value_ptr.*}, @src());
             i += 1;
         }
-        dbg.print("funcs_len: {} ---\n", .{self.ast.functions.items.len}, @src());
+        // dbg.print("funcs_len: {} ---\n", .{self.ast.functions.items.len}, @src());
         _ = try self.visitFuncDecl(self.global_funcs.get("main") orelse return Error.MissingMainFunctionDeclaration);
         return 0;
     }

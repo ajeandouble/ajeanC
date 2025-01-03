@@ -18,13 +18,13 @@ pub const Parser = struct {
 
     ast: *const Node = undefined,
 
-    pub fn init(token_slice: []const Token, allocator: std.mem.Allocator) !Self {
+    pub fn init(tokens_slice: []const Token, allocator: std.mem.Allocator) !Self {
         var arena = std.heap.ArenaAllocator.init(allocator);
         const arena_alloc = arena.allocator();
         var token_list = std.ArrayList(Token).init(arena_alloc);
-        try token_list.ensureTotalCapacity(token_slice.len);
+        try token_list.ensureTotalCapacity(tokens_slice.len);
 
-        for (token_slice) |token| {
+        for (tokens_slice) |token| {
             var lexeme: []const u8 = undefined;
             if (token.lexeme != null) {
                 lexeme = try arena_alloc.dupe(u8, token.lexeme.?);
@@ -36,8 +36,8 @@ pub const Parser = struct {
         }
 
         return Self{
-            .tokens = token_list,
             .arena = arena,
+            .tokens = token_list,
         };
     }
 
@@ -54,27 +54,15 @@ pub const Parser = struct {
         return node_ptr;
     }
 
-    pub fn createNode(
-        self: *Self,
-        comptime NodeType: type,
-        make_fn: fn (NodeType, std.mem.Allocator) anyerror!*NodeType,
-        variant_field: fn (*NodeType) Node,
-        args: NodeType,
-    ) !*Node {
-        const allocator = self.arena.allocator();
-        const variant_instance = try make_fn(args, allocator);
-        return self.makeNode(variant_field(variant_instance));
-    }
-
     fn eat(self: *Self, typ: TokenType) Error!void {
         const token = try self.current() orelse return Error.UnexpectedEndOfInput;
         dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
 
         if (token.type != typ) {
-            // dbg.print("Got bad token {}, expected {}\n", .{ typ, token.type }, @src());
+            dbg.print("Got bad token {}, expected {}\n", .{ typ, token.type }, @src());
             return Error.BadToken;
         }
-        // dbg.print("Ate {}=={s} and it was delicious\n", .{ typ, token.lexeme.? }, @src());
+        dbg.print("Ate {} == {s} and it was delicious\n", .{ typ, token.lexeme.? }, @src());
         self.tok_idx += 1;
     }
 
@@ -104,19 +92,6 @@ pub const Parser = struct {
     }
 
     // Terminal symbols
-    pub fn createNode_(
-        self: *Self,
-        // Generic makeNode function to handle different AstNodes types
-        comptime NodeType: type,
-        make_fn: fn (NodeType, std.mem.Allocator) anyerror!*NodeType,
-        variant_field: fn (*NodeType) Node,
-        args: NodeType,
-    ) !*Node {
-        const allocator = self.arena.allocator();
-        const variant_instance = try make_fn(args, allocator);
-        return self.makeNode(variant_field(variant_instance));
-    }
-
     pub fn parseNumber(self: *Self) anyerror!*Node {
         const token = try self.current() orelse return Error.UnexpectedEndOfInput;
         dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
@@ -176,7 +151,6 @@ pub const Parser = struct {
             .args = args,
         }, self.arena.allocator());
 
-        // Then create the Node separately
         const node = try self.arena.allocator().create(Node);
         node.* = Node{ .func_call = func_call };
 
@@ -259,7 +233,7 @@ pub const Parser = struct {
         var node = try self.parseArithmetic();
         while (true) {
             curr_token = try self.current() orelse return node;
-            //dbg.print("{} \"{s}\"\n", .{ curr_token.type, curr_token.lexeme }, @src());
+            dbg.print("{} \"{s}\"\n", .{ curr_token.type, curr_token.lexeme.? }, @src());
             switch (curr_token.type) {
                 .le, .lt, .eq, .ge, .gt => {
                     const saved_node = node;
@@ -270,7 +244,6 @@ pub const Parser = struct {
                 else => break,
             }
         }
-        //dbg.print("yoo directly\n", .{}, @src());
         return node;
     }
 
@@ -349,7 +322,8 @@ pub const Parser = struct {
 
         try self.eat(TokenType.function_kw);
         token = try self.current() orelse return Error.UnexpectedEndOfInput;
-        const func_id = token.lexeme.?;
+        const func_id = try self.arena.allocator().dupe(u8, token.lexeme.?);
+        dbg.print("function \"{s}\"\n", .{func_id}, @src());
         try self.eat(TokenType.id);
         try self.eat(TokenType.lparen);
         const args = try self.parseDeclArgs();
@@ -363,7 +337,6 @@ pub const Parser = struct {
         dbg.print("{} \"{s}\"\n", .{ token.type, try token.getLexeme() }, @src());
         var global_statements = std.ArrayList(*Node).init(self.arena.allocator());
         var functions_decls = std.ArrayList(*Node).init(self.arena.allocator());
-        // _ = functions_decls;
         while (token.type != TokenType.eof) {
             dbg.print("{} {s}\n", .{ token.type, try token.getLexeme() }, @src());
             switch (token.type) {
@@ -797,18 +770,38 @@ test "parseProgram - function main and function declaration" {
         Token{ .type = TokenType.rparen, .lexeme = ")", .line = 0, .allocator = undefined },
         Token{ .type = TokenType.lbrace, .lexeme = "{", .line = 0, .allocator = undefined },
         Token{ .type = TokenType.rbrace, .lexeme = "}", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.function_kw, .lexeme = "function", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.id, .lexeme = "myFunc", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lparen, .lexeme = "(", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rparen, .lexeme = ")", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.lbrace, .lexeme = "{", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.id, .lexeme = "a", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.assign, .lexeme = "=", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.integer, .lexeme = "42", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.semi, .lexeme = ";", .line = 0, .allocator = undefined },
+        Token{ .type = TokenType.rbrace, .lexeme = "}", .line = 0, .allocator = undefined },
         Token{ .type = TokenType.eof, .lexeme = "", .line = 0, .allocator = undefined },
     };
     var parser = try setupParserTest(&tokens);
     defer parser.deinit();
 
     const program = try parser.parse();
-    try std.testing.expectEqual(program.functions.items.len, 1);
+    try std.testing.expectEqual(program.functions.items.len, 2);
     try std.testing.expectEqual(program.global_statements.items.len, 0);
 
     const func_main = program.functions.items[0].*.func_decl;
     try std.testing.expectEqualStrings(func_main.id, "main");
     try std.testing.expectEqual(func_main.statements.items.len, 0);
+
+    const func_myFunc = program.functions.items[1].*.func_decl;
+    try std.testing.expectEqualStrings(func_myFunc.id, "myFunc");
+    try std.testing.expectEqual(func_myFunc.statements.items.len, 1);
+
+    const myFunc_stmt = func_myFunc.statements.items;
+    const myFunc_a_assign = myFunc_stmt[0];
+    try std.testing.expect(isBinOp(myFunc_a_assign));
+    try std.testing.expect(isVariable(myFunc_a_assign.binop.lhs));
+    try std.testing.expect(isNum(myFunc_a_assign.binop.rhs));
 }
 
 test "parseProgram - main, func and global statements" {

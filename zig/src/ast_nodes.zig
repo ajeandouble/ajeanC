@@ -5,8 +5,8 @@ const TokenType = @import("./tokens.zig").TokenType;
 
 pub const Num = struct {
     const Self = @This();
-    token: Token = undefined,
-    value: i64 = undefined,
+    token: Token,
+    value: i64,
 
     pub fn make(num: Self, allocator: std.mem.Allocator) anyerror!*Self {
         const instance = try allocator.create(Self);
@@ -93,11 +93,11 @@ pub const FunctionDecl = struct {
     statements: std.ArrayList(*Node),
 
     pub fn make(func_decl: Self, allocator: std.mem.Allocator) anyerror!*Self {
-        dbg.print(
-            "id {s} lexeme={s} statements=..,  \n",
-            .{ func_decl.id, func_decl.token.lexeme.? },
-            @src(),
-        );
+        // dbg.print(
+        //     "id {s} lexeme={s} statements=..,  \n",
+        //     .{ func_decl.id, func_decl.token.lexeme.? },
+        //     @src(),
+        // );
         const instance = try allocator.create(Self);
         instance.* = func_decl;
         return instance;
