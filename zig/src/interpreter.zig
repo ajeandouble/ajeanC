@@ -17,9 +17,11 @@ const activeTag = std.meta.activeTag;
 const NotImplented = error{NotImplemented}.NotImplemented;
 const Error = error{ InterpretError, DuplicateFunctionDeclaration, MissingMainFunctionDeclaration, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger, InvalidIfBlockExpression };
 
-const ResultType = enum { integer, string, err, void };
+const ValueType = enum { integer, float, string, array, void };
+const Value = union(enum) { integer: i64, float: f64, string: []u8, array: []Value, void: void };
 
-const Result = union(ResultType) { integer: struct { val: i64 }, string: struct { val: []u8 }, err: struct { type: Error, msg: []u8 }, void: struct {} };
+const ResultType = enum { value, ret, err };
+const Result = union(ResultType) { value: Value, ret: Value, err: struct { type: Error, msg: []u8 } };
 
 pub const StackFrame = struct {
     const Self = @This();
@@ -81,7 +83,7 @@ pub const Interpreter = struct {
     // Interpretation of funtion body
     fn visitCompoundStatement(self: *Self, statements: std.ArrayList(*Node)) !Result {
         dbg.print("\n", .{}, @src());
-        var ret_value: Result = Result{ .void = .{} };
+        var ret_value: Result = Result{ .ret = .{ .void = {} } };
         for (statements.items) |stmt| {
             dbg.print("\n", .{}, @src());
             switch (stmt.*) {
@@ -111,7 +113,7 @@ pub const Interpreter = struct {
         dbg.print("variable id={s}\n", .{node.id}, @src());
         var locals = self.stack.getLast().symbols;
         if (locals.get(node.id)) |value| {
-            return Result{ .integer = .{ .val = value.integer.val } };
+            return value;
         } else {
             return Error.VariableIsNotDeclared;
         }
@@ -143,21 +145,21 @@ pub const Interpreter = struct {
         dbg.print("", .{}, @src());
         const expr_result = try self.visit(if_block.expr);
         var condition: bool = undefined;
-        switch (expr_result) {
-            .integer => condition = expr_result.integer.val != 0,
+        switch (expr_result.value) {
+            .integer => condition = expr_result.value.integer != 0,
             else => return Error.InvalidIfBlockExpression,
         }
         if (condition) {
             return self.visitCompoundStatement(if_block.statements);
         }
-        return Result{ .void = .{} };
+        return Result{ .value = .{ .void = {} } };
     }
 
     fn visit(self: *Self, node: *const Node) anyerror!Result {
         dbg.print("\n", .{}, @src());
         switch (node.*) {
             .program => return NotImplented,
-            .num => return Result{ .integer = .{ .val = self.visitInteger(node.*.num) } },
+            .num => return Result{ .value = .{ .integer = self.visitInteger(node.*.num) } },
             .binop => return try self.visitBinOp(node.*.binop),
             .unaryop => return try self.visitUnaryOp(node.*.unaryop),
             .variable => return try self.visitVariable(node.*.variable),
@@ -172,22 +174,22 @@ pub const Interpreter = struct {
     }
 
     fn computeIntBinOp(self: *Self, binop: *const BinOp, lhs_result: Result, rhs_result: Result) !i64 {
-        const lhs_val = lhs_result.integer.val;
-        const rhs_val = rhs_result.integer.val;
+        const lhs_val = lhs_result.value.integer;
+        const rhs_val = rhs_result.value.integer;
         dbg.print("{} {} {}\n", .{ lhs_val, binop.token.type, rhs_val }, @src());
         var new_val: i64 = undefined;
         switch (binop.token.type) {
-            TokenType.plus => new_val = lhs_result.integer.val + rhs_result.integer.val,
-            TokenType.minus => new_val = lhs_result.integer.val - rhs_result.integer.val,
-            TokenType.mul => new_val = lhs_result.integer.val * rhs_result.integer.val,
-            TokenType.div => new_val = @divTrunc(lhs_result.integer.val, rhs_result.integer.val),
-            TokenType.mod => new_val = @mod(lhs_result.integer.val, rhs_result.integer.val),
+            TokenType.plus => new_val = lhs_result.value.integer + rhs_result.value.integer,
+            TokenType.minus => new_val = lhs_result.value.integer - rhs_result.value.integer,
+            TokenType.mul => new_val = lhs_result.value.integer * rhs_result.value.integer,
+            TokenType.div => new_val = @divTrunc(lhs_result.value.integer, rhs_result.value.integer),
+            TokenType.mod => new_val = @mod(lhs_result.value.integer, rhs_result.value.integer),
 
-            TokenType.lt => new_val = @intFromBool(lhs_result.integer.val < rhs_result.integer.val),
-            TokenType.le => new_val = @intFromBool(lhs_result.integer.val <= rhs_result.integer.val),
-            TokenType.eq => new_val = @intFromBool(lhs_result.integer.val == rhs_result.integer.val),
-            TokenType.ge => new_val = @intFromBool(lhs_result.integer.val >= rhs_result.integer.val),
-            TokenType.gt => new_val = @intFromBool(lhs_result.integer.val > rhs_result.integer.val),
+            TokenType.lt => new_val = @intFromBool(lhs_result.value.integer < rhs_result.value.integer),
+            TokenType.le => new_val = @intFromBool(lhs_result.value.integer <= rhs_result.value.integer),
+            TokenType.eq => new_val = @intFromBool(lhs_result.value.integer == rhs_result.value.integer),
+            TokenType.ge => new_val = @intFromBool(lhs_result.value.integer >= rhs_result.value.integer),
+            TokenType.gt => new_val = @intFromBool(lhs_result.value.integer > rhs_result.value.integer),
 
             else => return NotImplented,
         }
@@ -196,7 +198,7 @@ pub const Interpreter = struct {
         return new_val;
     }
 
-    fn visitAssignment(self: *Self, binop: *const BinOp) !void {
+    fn visitAssignment(self: *Self, binop: *const BinOp) !Result {
         dbg.print("\n", .{}, @src());
         const locals_ptr = &(self.stack.items[self.stack.items.len - 1].symbols);
         var locals = locals_ptr.*;
@@ -209,21 +211,21 @@ pub const Interpreter = struct {
             dbg.print("{}\n", .{item.value_ptr.*}, @src());
         }
         locals_ptr.* = locals;
+        return rhs_result;
     }
 
     fn visitBinOp(self: *Self, binop: *const BinOp) !Result {
         dbg.print("\"{s}\"\n", .{binop.token.lexeme.?}, @src());
         if (binop.token.type == TokenType.assign) {
-            try self.visitAssignment(binop);
-            return Result{ .void = .{} };
+            return try self.visitAssignment(binop);
         }
 
         const lhs_result = try self.visit(binop.lhs);
         const rhs_result = try self.visit(binop.rhs);
-        const lhs_res_tag = activeTag(lhs_result);
-        switch (lhs_res_tag) {
+        // const lhs_res_tag = activeTag(lhs_result);
+        switch (lhs_result.value) {
             .integer => {
-                return Result{ .integer = .{ .val = try self.computeIntBinOp(binop, lhs_result, rhs_result) } };
+                return Result{ .value = .{ .integer = try self.computeIntBinOp(binop, lhs_result, rhs_result) } };
             },
             else => return NotImplented, // NOTE: e.g. concat strings
         }
@@ -231,17 +233,17 @@ pub const Interpreter = struct {
 
     fn visitUnaryOp(self: *Self, unaryop: *const UnaryOp) !Result {
         dbg.print("'{s}'\n", .{unaryop.token.lexeme.?}, @src());
-        var value_result = try self.visit(unaryop.value);
+        var result = try self.visit(unaryop.value);
 
-        switch (value_result) {
+        switch (result.value) {
             .integer => {
                 if (unaryop.token.type == TokenType.minus) {
-                    value_result.integer.val = -value_result.integer.val;
+                    result.value.integer = -result.value.integer;
                 }
             },
             else => return NotImplented, // NOTE: e.g. concat strings
         }
-        return value_result;
+        return result;
     }
 
     pub fn interpret(self: *Self) !i64 {
@@ -251,7 +253,8 @@ pub const Interpreter = struct {
         for (global_statements.items) |stmt| {
             switch (stmt.*) {
                 .binop => {
-                    try self.visitAssignment(stmt.*.binop);
+                    _ = try self.visitAssignment(stmt.*.binop);
+                    // dbg.print("{any}\n", assignment_res, @src());
                 },
                 else => return Error.InvalidGlobalStatement,
             }
@@ -277,7 +280,7 @@ pub const Interpreter = struct {
         var i: usize = 0;
         try self.pushStackFrame();
         const result = try self.visitFuncDecl(self.global_funcs.get("main") orelse return Error.MissingMainFunctionDeclaration);
-        switch (result) {
+        switch (result.value) {
             .integer => {},
             else => {
                 return Error.MainShouldReturnInteger;
@@ -292,6 +295,6 @@ pub const Interpreter = struct {
         }
         try self.popStackFrame();
         // dbg.print("funcs_len: {} ---\n", .{self.ast.functions.items.len}, @src());
-        return result.integer.val;
+        return result.value.integer;
     }
 };
