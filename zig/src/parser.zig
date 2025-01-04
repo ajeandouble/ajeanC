@@ -265,7 +265,7 @@ pub const Parser = struct {
         const expr = try self.parseExpr();
         try self.eat(TokenType.rparen);
         const statements = try self.parseCompoundStatement();
-        const if_block = try AstNode.IfBlock.make(AstNode.IfBlock{ .expr = expr, .statements = statements }, self.arena.allocator());
+        const if_block = try AstNode.IfBlock.make(AstNode.IfBlock{ .expr = expr, .statements = statements, .token = token }, self.arena.allocator());
         return self.makeNode(Node{ .if_block = if_block });
     }
 

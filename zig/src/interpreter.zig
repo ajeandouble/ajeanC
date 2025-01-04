@@ -83,9 +83,10 @@ pub const Interpreter = struct {
     // Interpretation of funtion body
     fn visitCompoundStatement(self: *Self, statements: std.ArrayList(*Node)) !Result {
         dbg.print("\n", .{}, @src());
-        var ret_value: Result = Result{ .ret = .{ .void = {} } };
+        var ret_value: Result = undefined;
         for (statements.items) |stmt| {
-            dbg.print("\n", .{}, @src());
+            dbg.printUnion(Node, stmt.*, @src());
+            // dbg.print("{s}\n", .{}, @src());
             switch (stmt.*) {
                 .ret => {
                     dbg.print("ret\n", .{}, @src());
@@ -94,6 +95,17 @@ pub const Interpreter = struct {
                     break;
                 },
                 else => ret_value = try self.visit(stmt),
+            }
+            switch (ret_value) {
+                .value => {
+                    continue;
+                },
+                .err => {
+                    return Error.InterpretError;
+                },
+                .ret => {
+                    break;
+                },
             }
             dbg.print("{}\n", .{ret_value}, @src());
         }
@@ -294,7 +306,6 @@ pub const Interpreter = struct {
             i += 1;
         }
         try self.popStackFrame();
-        // dbg.print("funcs_len: {} ---\n", .{self.ast.functions.items.len}, @src());
         return result.value.integer;
     }
 };
