@@ -26,7 +26,6 @@ pub const StackFrame = struct {
     symbols: std.StringHashMap(Result),
 
     pub fn init(allocator: std.mem.Allocator) !Self {
-        dbg.print("\n", .{}, @src());
         const locals = std.StringHashMap(Result).init(allocator);
         return Self{ .symbols = locals };
     }
@@ -55,13 +54,13 @@ pub const Interpreter = struct {
     }
 
     // Stack
-    pub fn pushStack(self: *Self) !void {
-        dbg.print("Stack: capacity = {}, length = {}\n", .{ self.stack.capacity, self.stack.items.len }, @src());
+    pub fn pushStackFrame(self: *Self) !void {
         const frame = try StackFrame.init(self.allocator);
         try self.stack.append(frame);
+        dbg.print("Stack: capacity = {}, length = {}\n", .{ self.stack.capacity, self.stack.items.len }, @src());
     }
 
-    pub fn popStack(self: *Self) !void {
+    pub fn popStackFrame(self: *Self) !void {
         dbg.print("\n", .{}, @src());
         const frame = &self.stack.getLast();
         var it = frame.symbols.iterator();
@@ -80,27 +79,32 @@ pub const Interpreter = struct {
     }
 
     // Interpretation of funtion body
-    fn visitFuncBody(self: *Self, func_decl: *const FunctionDecl) !Result {
-        dbg.print("{s}\n", .{func_decl.id}, @src());
-        try self.pushStack();
+    fn visitCompoundStatement(self: *Self, statements: std.ArrayList(*Node)) !Result {
+        dbg.print("\n", .{}, @src());
         var ret_value: Result = Result{ .void = .{} };
-        const body = func_decl.statements.items;
-        for (body) |stmt| {
+        for (statements.items) |stmt| {
             dbg.print("\n", .{}, @src());
-            var tmp_ret: Result = undefined;
             switch (stmt.*) {
                 .ret => {
-                    tmp_ret = try self.visit(stmt.ret.expr);
-                    ret_value = tmp_ret;
-                    dbg.print("{}\n", .{tmp_ret}, @src());
+                    dbg.print("ret\n", .{}, @src());
+                    ret_value = try self.visit(stmt.ret.expr);
+                    dbg.print("tmp_ret == {}\n", .{ret_value}, @src());
                     break;
                 },
-                else => tmp_ret = try self.visit(stmt),
+                else => ret_value = try self.visit(stmt),
             }
-            dbg.print("{}\n", .{tmp_ret}, @src());
+            dbg.print("{}\n", .{ret_value}, @src());
         }
-        try self.popStack();
         return ret_value;
+    }
+
+    fn visitFuncBody(self: *Self, func_decl: *const FunctionDecl) !Result {
+        dbg.print("{s}\n", .{func_decl.id}, @src());
+        try self.pushStackFrame();
+        const statements = func_decl.statements.items;
+        const result = try self.visitCompoundStatement(statements);
+        try self.popStackFrame();
+        return result;
     }
 
     fn visitVariable(self: *Self, node: *const Variable) !Result {
@@ -113,38 +117,38 @@ pub const Interpreter = struct {
         }
     }
 
+    fn visitFuncDecl(self: *Self, node: *const FunctionDecl) !Result {
+        dbg.print("{s}\n", .{node.id}, @src());
+        const id = node.id;
+        if (self.global_funcs.get(id)) |value| {
+            try self.pushStackFrame();
+            const result = self.visitCompoundStatement(value.statements);
+            try self.popStackFrame();
+            return result;
+        } else {
+            return Error.VariableIsNotDeclared;
+        }
+    }
+
     fn visitFuncCall(self: *Self, node: *const FunctionCall) !Result {
         const id = node.id;
         if (self.global_funcs.get(id)) |value| {
-            return self.visitFuncBody(value);
+            return self.visitCompoundStatement(value.statements);
         } else {
             return Error.VariableIsNotDeclared;
         }
     }
 
     fn visitIfBlock(self: *Self, if_block: *const IfBlock) !Result {
-        const result = try self.visit(if_block.expr);
+        dbg.print("", .{}, @src());
+        const expr_result = try self.visit(if_block.expr);
         var condition: bool = undefined;
-        switch (result) {
-            .integer => condition = result.integer.val != 0,
+        switch (expr_result) {
+            .integer => condition = expr_result.integer.val != 0,
             else => return Error.InvalidIfBlockExpression,
         }
         if (condition) {
-            const body = if_block.statements.items;
-            for (body) |stmt| {
-                dbg.print("\n", .{}, @src());
-                var tmp_ret: Result = undefined;
-                switch (stmt.*) {
-                    .ret => {
-                        tmp_ret = try self.visit(stmt.ret.expr);
-                        // ret_value = tmp_ret;
-                        dbg.print("{}\n", .{tmp_ret}, @src());
-                        break;
-                    },
-                    else => tmp_ret = try self.visit(stmt),
-                }
-                dbg.print("{}\n", .{tmp_ret}, @src());
-            }
+            return self.visitCompoundStatement(if_block.statements);
         }
         return Result{ .void = .{} };
     }
@@ -271,8 +275,8 @@ pub const Interpreter = struct {
         }
         dbg.print("global_len: {}\n", .{self.ast.global_statements.items.len}, @src());
         var i: usize = 0;
-        try self.pushStack();
-        const result = try self.visitFuncBody(self.global_funcs.get("main") orelse return Error.MissingMainFunctionDeclaration);
+        try self.pushStackFrame();
+        const result = try self.visitFuncDecl(self.global_funcs.get("main") orelse return Error.MissingMainFunctionDeclaration);
         switch (result) {
             .integer => {},
             else => {
@@ -286,7 +290,7 @@ pub const Interpreter = struct {
             dbg.print("{}\n", .{item.value_ptr.*}, @src());
             i += 1;
         }
-        try self.popStack();
+        try self.popStackFrame();
         // dbg.print("funcs_len: {} ---\n", .{self.ast.functions.items.len}, @src());
         return result.integer.val;
     }
