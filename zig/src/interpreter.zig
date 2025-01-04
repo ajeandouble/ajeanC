@@ -15,13 +15,13 @@ const Token = @import("./tokens.zig").Token;
 const activeTag = std.meta.activeTag;
 
 const NotImplented = error{NotImplemented}.NotImplemented;
-const Error = error{ InterpretError, DuplicateFunctionDeclaration, MissingMainFunctionDeclaration, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger, InvalidIfBlockExpression };
+const Error = error{ InterpretError, DuplicateFunctionDeclaration, MissingMainFunctionDeclaration, WrongBinOpTypes, MismatchingBinOpTypes, InvalidGlobalStatement, VariableIsNotDeclared, MainShouldReturnInteger, InvalidIfBlockExpression };
 
 const ValueType = enum { integer, float, string, array, void };
 const Value = union(enum) { integer: i64, float: f64, string: []u8, array: []Value, void: void };
 
-const ResultType = enum { value, ret, err };
-const Result = union(ResultType) { value: Value, ret: Value, err: struct { type: Error, msg: []u8 } };
+const ResultType = enum { value, err };
+const Result = union(ResultType) { value: Value, err: struct { type: Error, msg: []u8 } };
 
 pub const StackFrame = struct {
     const Self = @This();
@@ -43,6 +43,7 @@ pub const Interpreter = struct {
     stack: std.ArrayList(StackFrame),
     global_funcs: std.StringHashMap(*FunctionDecl),
     ast: *const Program = undefined,
+    return_val: ?Result = undefined,
 
     pub fn init(ast: *Program, allocator: std.mem.Allocator) !Self {
         const stack = try std.ArrayList(StackFrame).initCapacity(allocator, 1024);
@@ -83,33 +84,25 @@ pub const Interpreter = struct {
     // Interpretation of funtion body
     fn visitCompoundStatement(self: *Self, statements: std.ArrayList(*Node)) !Result {
         dbg.print("\n", .{}, @src());
-        var ret_value: Result = undefined;
+        var result: Result = Result{ .value = .{ .void = {} } };
         for (statements.items) |stmt| {
-            dbg.printUnion(Node, stmt.*, @src());
-            // dbg.print("{s}\n", .{}, @src());
+            dbg.printNodeUnion(stmt, @src());
+            if (self.return_val != null) {
+                break;
+            }
             switch (stmt.*) {
                 .ret => {
                     dbg.print("ret\n", .{}, @src());
-                    ret_value = try self.visit(stmt.ret.expr);
-                    dbg.print("tmp_ret == {}\n", .{ret_value}, @src());
+                    result = try self.visit(stmt.ret.expr);
+                    self.return_val = result;
+                    dbg.print("tmp_ret == {}\n", .{result}, @src());
                     break;
                 },
-                else => ret_value = try self.visit(stmt),
+                else => result = try self.visit(stmt),
             }
-            switch (ret_value) {
-                .value => {
-                    continue;
-                },
-                .err => {
-                    return Error.InterpretError;
-                },
-                .ret => {
-                    break;
-                },
-            }
-            dbg.print("{}\n", .{ret_value}, @src());
+            dbg.print("{} {?}\n", .{ result, self.return_val }, @src());
         }
-        return ret_value;
+        return result;
     }
 
     fn visitFuncBody(self: *Self, func_decl: *const FunctionDecl) !Result {
@@ -136,17 +129,25 @@ pub const Interpreter = struct {
         const id = node.id;
         if (self.global_funcs.get(id)) |value| {
             try self.pushStackFrame();
-            const result = self.visitCompoundStatement(value.statements);
+            _ = try self.visitCompoundStatement(value.statements);
             try self.popStackFrame();
-            return result;
+            const result = self.return_val;
+            if (result != null) {
+                self.return_val = null;
+                return result.?;
+            } else {
+                return Result{ .value = .{ .void = {} } };
+            }
         } else {
             return Error.VariableIsNotDeclared;
         }
     }
 
-    fn visitFuncCall(self: *Self, node: *const FunctionCall) !Result {
-        const id = node.id;
+    fn visitFuncCall(self: *Self, func_call: *const FunctionCall) !Result {
+        dbg.print("\n", .{}, @src());
+        const id = func_call.id;
         if (self.global_funcs.get(id)) |value| {
+            dbg.print("{}\n", .{value.statements.items.len}, @src());
             return self.visitCompoundStatement(value.statements);
         } else {
             return Error.VariableIsNotDeclared;
@@ -168,7 +169,7 @@ pub const Interpreter = struct {
     }
 
     fn visit(self: *Self, node: *const Node) anyerror!Result {
-        dbg.print("\n", .{}, @src());
+        dbg.printNodeUnion(node, @src());
         switch (node.*) {
             .program => return NotImplented,
             .num => return Result{ .value = .{ .integer = self.visitInteger(node.*.num) } },
@@ -186,6 +187,16 @@ pub const Interpreter = struct {
     }
 
     fn computeIntBinOp(self: *Self, binop: *const BinOp, lhs_result: Result, rhs_result: Result) !i64 {
+        dbg.print("\"{s}\"\n", .{binop.token.lexeme.?}, @src());
+        dbg.printNodeUnion(&Node{ .binop = @constCast(binop) }, @src());
+        dbg.print("{} {} {}\n", .{ lhs_result, binop.token.type, rhs_result }, @src());
+        if (lhs_result.value != Value.integer or rhs_result.value != Value.integer) {
+            switch (rhs_result.value) {
+                .string => dbg.print("WTF", .{}, @src()),
+                else => {},
+            }
+            return Error.WrongBinOpTypes;
+        }
         const lhs_val = lhs_result.value.integer;
         const rhs_val = rhs_result.value.integer;
         dbg.print("{} {} {}\n", .{ lhs_val, binop.token.type, rhs_val }, @src());
@@ -234,7 +245,6 @@ pub const Interpreter = struct {
 
         const lhs_result = try self.visit(binop.lhs);
         const rhs_result = try self.visit(binop.rhs);
-        // const lhs_res_tag = activeTag(lhs_result);
         switch (lhs_result.value) {
             .integer => {
                 return Result{ .value = .{ .integer = try self.computeIntBinOp(binop, lhs_result, rhs_result) } };
@@ -276,13 +286,13 @@ pub const Interpreter = struct {
             switch (func.*) {
                 .func_decl => {
                     const decl = func.func_decl;
-                    const id = func.func_decl.*.id;
+                    const id = decl.*.id;
                     dbg.print("Function id={s}\n", .{id}, @src());
                     if (self.global_funcs.contains(id)) {
                         return Error.DuplicateFunctionDeclaration;
                     }
-                    const key = try self.allocator.dupe(u8, func.func_decl.id);
-                    dbg.print("{s}\n", .{func.func_decl.id}, @src());
+                    const key = try self.allocator.dupe(u8, decl.id);
+                    dbg.print("{s}\n", .{decl.id}, @src());
                     try self.global_funcs.put(key, decl);
                 },
                 else => return Error.InterpretError,
@@ -292,11 +302,16 @@ pub const Interpreter = struct {
         var i: usize = 0;
         try self.pushStackFrame();
         const result = try self.visitFuncDecl(self.global_funcs.get("main") orelse return Error.MissingMainFunctionDeclaration);
-        switch (result.value) {
-            .integer => {},
-            else => {
-                return Error.MainShouldReturnInteger;
+        switch (result) {
+            .value => {
+                switch (result.value) {
+                    .void => return 0,
+                    .integer => return result.value.integer,
+                    .string => return 0,
+                    else => return 0,
+                }
             },
+            .err => return Error.MainShouldReturnInteger,
         }
         const global_symbols = self.stack.items[0].symbols;
         var it = global_symbols.iterator();
@@ -306,6 +321,6 @@ pub const Interpreter = struct {
             i += 1;
         }
         try self.popStackFrame();
-        return result.value.integer;
+        return result.ret.integer;
     }
 };
